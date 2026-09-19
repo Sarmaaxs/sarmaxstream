@@ -62,7 +62,6 @@ export default function VideoPlayer({ open, onClose, mediaType, tmdbId, title, p
           title={title}
           allowFullScreen
           referrerPolicy="origin"
-          sandbox="allow-scripts allow-same-origin allow-presentation"
           allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
           className="w-full h-full"
           style={{ border: 0 }}
