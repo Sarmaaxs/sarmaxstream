@@ -24,8 +24,7 @@ function TelegramLogo({ className = "w-7 h-7" }) {
 
 function TelegramLink({ children }) {
   return (
-    
-      href={TELEGRAM_URL}
+    <a href={TELEGRAM_URL}
       target="_blank"
       rel="noopener noreferrer"
       className="text-primary hover:underline"
@@ -303,8 +302,7 @@ export function Contact() {
         Telegram.
       </p>
 
-      
-        href={TELEGRAM_URL}
+      <a href={TELEGRAM_URL}
         target="_blank"
         rel="noopener noreferrer"
         className="inline-flex items-center gap-3 h-14 px-6 rounded-full bg-white/5 border border-border/60 hover:bg-white/10 transition"
