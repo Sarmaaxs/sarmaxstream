@@ -1,3 +1,4 @@
+import DownloadButton from "@/components/DownloadButton";
 import React, { useEffect, useState } from "react";
 import { useParams, Link } from "react-router-dom";
 import { Play, Star, Clock, Calendar } from "lucide-react";
@@ -107,7 +108,7 @@ export default function TitleDetail() {
       <BackButton />
       <div className="relative h-[52vh] min-h-[360px] w-full overflow-hidden">
         {backdropUrl(data.backdrop_path) && (
-          <img src={backdropUrl(data.backdrop_path, "original")} alt={title} className="w-full h-full object-cover" />
+          <img src={backdropUrl(data.backdrop_path,"w1280")} alt={title} className="w-full h-full object-cover" />
         )}
         <div className="absolute inset-0 bg-gradient-to-t from-background via-background/70 to-background/30" />
         <div className="absolute inset-0 bg-gradient-to-r from-background/80 to-transparent" />
@@ -151,15 +152,14 @@ export default function TitleDetail() {
               <button
                 onClick={play}
                 className="flex items-center gap-2 h-12 px-7 rounded-full bg-primary text-primary-foreground font-semibold hover:brightness-110 transition"
-              >
-                <Play className="w-5 h-5 fill-primary-foreground" />
+              >                <Play className="w-5 h-5 fill-primary-foreground" />
                 {type === "tv" ? "Play First Episode" : "Play"}
               </button>
               <WatchlistButton
                 item={{ id: data.id, media_type: type, title, poster_path: data.poster_path, backdrop_path: data.backdrop_path }}
               />
+              {type === "movie" && <DownloadButton tmdbId={data.id} mediaType={type} />}
             </div>
-
             {data.genres?.length > 0 && (
               <div className="flex flex-wrap gap-2 mb-4">
                 {data.genres.map((g) => (
