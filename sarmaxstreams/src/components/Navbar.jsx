@@ -1,14 +1,13 @@
 import React, { useState, useEffect } from "react";
-import { Link, useNavigate, useLocation } from "react-router-dom";
-import { Search, Bookmark, LogIn, UserRound } from "lucide-react";
+import { Link, useLocation } from "react-router-dom";
+import { Bookmark, LogIn, UserRound } from "lucide-react";
 import { supabase } from "@/api/supabaseClient";
+import SearchBox from "@/components/SearchBox";
 
 export default function Navbar() {
-  const navigate = useNavigate();
   const location = useLocation();
   const [scrolled, setScrolled] = useState(false);
   const [authed, setAuthed] = useState(false);
-  const [q, setQ] = useState("");
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 24);
@@ -20,12 +19,6 @@ export default function Navbar() {
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setAuthed(!!data.session));
   }, [location.pathname]);
-
-  const submitSearch = (e) => {
-    e.preventDefault();
-    const query = q.trim();
-    if (query) navigate(`/search?q=${encodeURIComponent(query)}`);
-  };
 
   const links = [
   { label: "Home", to: "/" },
@@ -42,8 +35,6 @@ export default function Navbar() {
       <div className="mx-auto max-w-[1600px] px-4 sm:px-6 lg:px-10 h-16 flex items-center gap-6">
         <Link to="/" className="flex items-center gap-2 shrink-0">
           
-
-          
           <span className="font-display font-bold text-lg tracking-tight">
             sarmax<span className="text-primary">stream</span>
           </span>
@@ -57,17 +48,10 @@ export default function Navbar() {
           )}
         </nav>
 
-        <form onSubmit={submitSearch} className="hidden sm:flex flex-1 max-w-md ml-auto items-center">
-          <div className="relative w-full">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <input
-              value={q}
-              onChange={(e) => setQ(e.target.value)}
-              placeholder="Search movies, shows…"
-              className="w-full h-10 pl-10 pr-3 rounded-full bg-white/5 border border-border/60 text-sm placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/60" />
-            
-          </div>
-        </form>
+        {/* Phones use the search field on the Search page instead. */}
+        <div className="hidden sm:block flex-1 max-w-md ml-auto">
+          <SearchBox size="nav" />
+        </div>
 
         <div className="flex items-center gap-2 ml-auto sm:ml-2">
           {authed ?

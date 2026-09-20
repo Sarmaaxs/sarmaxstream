@@ -1,33 +1,22 @@
 import React, { useEffect, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
+import { Link, useLocation } from "react-router-dom";
 import { Search as SearchIcon } from "lucide-react";
 import Navbar from "@/components/Navbar";
+import SearchBox from "@/components/SearchBox";
 import PosterGrid from "@/components/PosterGrid";
 import { tmdbSearch, tmdbPopular, tmdbByGenre, tmdbGenres } from "@/lib/tmdb";
 
 export default function SearchPage() {
   const location = useLocation();
-  const navigate = useNavigate();
   const params = new URLSearchParams(location.search);
   const q = params.get("q") || "";
   const browseType = params.get("genre"); // "movie" | "tv"
 
-  const [query, setQuery] = useState(q);
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(true);
   const [genres, setGenres] = useState([]);
   const [activeGenre, setActiveGenre] = useState(null);
   const [title, setTitle] = useState("Search");
-
-  useEffect(() => {
-    setQuery(q);
-  }, [q]);
-
-  const submitSearch = (e) => {
-    e.preventDefault();
-    const trimmed = query.trim();
-    if (trimmed) navigate(`/search?q=${encodeURIComponent(trimmed)}`);
-  };
 
   useEffect(() => {
     let active = true;
@@ -94,20 +83,9 @@ export default function SearchPage() {
         {/* Phones: the navbar search field is hidden below `sm` and the hamburger menu
             is gone, so search + the Movies / TV Shows shortcuts live here. */}
         <div className="md:hidden mt-4 mb-2">
-          <form onSubmit={submitSearch} className="sm:hidden mb-3">
-            <div className="relative">
-              <SearchIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-              <input
-                type="search"
-                enterKeyHint="search"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                placeholder="Search movies, shows…"
-                aria-label="Search movies and shows"
-                className="w-full h-11 pl-10 pr-3 rounded-full bg-white/5 border border-border/60 text-base placeholder:text-muted-foreground focus:outline-none focus:ring-2 focus:ring-primary/60"
-              />
-            </div>
-          </form>
+          <div className="sm:hidden mb-3">
+            <SearchBox size="page" initial={q} />
+          </div>
           <div className="flex gap-2">
             {[
               { label: "Movies", value: "movie" },

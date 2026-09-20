@@ -7,6 +7,7 @@ import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import ScrollToTop from './components/ScrollToTop';
 import MobileBottomNav from '@/components/MobileBottomNav';
+import Footer from '@/components/Footer';
 // Add page imports here
 import Home from '@/pages/Home';
 import SearchPage from '@/pages/Search';
@@ -16,6 +17,7 @@ import Login from '@/pages/Login';
 import Register from '@/pages/Register';
 import ForgotPassword from '@/pages/ForgotPassword';
 import ResetPassword from '@/pages/ResetPassword';
+import { Terms, Privacy, Faq, Contact } from '@/pages/InfoPages';
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { Navigate } from 'react-router-dom';
 
@@ -53,11 +55,16 @@ const AuthenticatedApp = () => {
       <Route path="/" element={<Home />} />
       <Route path="/search" element={<SearchPage />} />
       <Route path="/title/:type/:id" element={<TitleDetail />} />
+      <Route path="/terms" element={<Terms />} />
+      <Route path="/privacy" element={<Privacy />} />
+      <Route path="/faq" element={<Faq />} />
+      <Route path="/contact" element={<Contact />} />
       <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/login" replace />} />}>
         <Route path="/watchlist" element={<WatchlistPage />} />
       </Route>
       <Route path="*" element={<PageNotFound />} />
     </Routes>
+    <Footer />
     {/* Phones only (md:hidden); hides itself on the auth routes. */}
     <MobileBottomNav />
     </>
