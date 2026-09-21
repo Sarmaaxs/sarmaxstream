@@ -2,10 +2,11 @@ import React from "react";
 import { Link } from "react-router-dom";
 import { Play, Star } from "lucide-react";
 import { backdropUrl } from "@/lib/tmdb";
+import { animeCardType } from "@/lib/anime";
 
 export default function Hero({ item }) {
   if (!item) return null;
-  const type = item.media_type || (item.first_air_date ? "tv" : "movie");
+  const type = animeCardType(item) || item.media_type || (item.first_air_date ? "tv" : "movie");
   const title = item.title || item.name;
   const year = (item.release_date || item.first_air_date || "").slice(0, 4);
 

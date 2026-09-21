@@ -2,6 +2,7 @@ import React from "react";
 import { Link } from "react-router-dom";
 import { Star } from "lucide-react";
 import { imageUrl } from "@/lib/tmdb";
+import { animeCardType } from "@/lib/anime";
 
 export default function PosterGrid({ items, emptyMessage = "Nothing here yet." }) {
   if (!items || items.length === 0) {
@@ -10,7 +11,7 @@ export default function PosterGrid({ items, emptyMessage = "Nothing here yet." }
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4">
       {items.map((item, i) => {
-        const type = item.media_type || (item.first_air_date ? "tv" : "movie");
+        const type = animeCardType(item) || item.media_type || (item.first_air_date ? "tv" : "movie");
         const id = item.id || item.tmdb_id;
         const title = item.title || item.name;
         const year = (item.release_date || item.release_year || item.first_air_date || "").toString().slice(0, 4);

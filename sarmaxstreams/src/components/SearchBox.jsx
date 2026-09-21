@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Search, Loader2 } from "lucide-react";
 import { tmdbSearch, imageUrl } from "@/lib/tmdb";
+import { animeCardType } from "@/lib/anime";
 
 // Remembers results for the current visit so typing the same thing twice
 // (or backspacing) doesn't hit the API again.
@@ -88,7 +89,7 @@ export default function SearchBox({ size = "nav", initial = "" }) {
 
   const goTitle = (item) => {
     setOpen(false);
-    navigate(`/title/${item.media_type}/${item.id}`);
+    navigate(`/title/${animeCardType(item) || item.media_type}/${item.id}`);
   };
 
   const onSubmit = (e) => {
@@ -173,7 +174,7 @@ export default function SearchBox({ size = "nav", initial = "" }) {
                   <span className="min-w-0">
                     <span className="block text-sm font-medium truncate">{title}</span>
                     <span className="block text-xs text-muted-foreground">
-                      {item.media_type === "tv" ? "Series" : "Movie"}
+                      {animeCardType(item) ? "Anime" : item.media_type === "tv" ? "Series" : "Movie"}
                       {year ? ` · ${year}` : ""}
                     </span>
                   </span>

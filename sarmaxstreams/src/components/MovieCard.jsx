@@ -2,9 +2,10 @@ import React from "react";
 import { Link } from "react-router-dom";
 import { Star, Play } from "lucide-react";
 import { imageUrl } from "@/lib/tmdb";
+import { animeCardType } from "@/lib/anime";
 
 export default function MovieCard({ item, index = 0 }) {
-  const type = item.media_type || (item.first_air_date ? "tv" : "movie");
+  const type = animeCardType(item) || item.media_type || (item.first_air_date ? "tv" : "movie");
   const title = item.title || item.name;
   const year = (item.release_date || item.first_air_date || "").slice(0, 4);
   const poster = imageUrl(item.poster_path, "w342");
