@@ -1,7 +1,18 @@
 import React, { useEffect, useState } from "react";
 import { X, Loader2, AlertTriangle, ChevronLeft, ChevronRight } from "lucide-react";
 import { recordContinueWatching } from "@/lib/library";
-import { animeStreamUrl, AUDIO_OPTIONS } from "@/lib/anime";
+import { animeStreamUrl, AUDIO_OPTIONS, ANIME_SOURCES } from "@/lib/anime";
+
+const SERVER_KEY = "sarmaxstream:anime-server";
+
+function readServer() {
+  try {
+    const s = localStorage.getItem(SERVER_KEY);
+    return ANIME_SOURCES.some((x) => x.id === s) ? s : ANIME_SOURCES[0].id;
+  } catch {
+    return ANIME_SOURCES[0].id;
+  }
+}
 
 // Small Sub / Dub switch, used here and on the anime detail page.
 export function AudioToggle({ value, onChange, className = "" }) {
@@ -44,7 +55,17 @@ export default function AnimePlayer({
   onEpisodeChange,
 }) {
   const [loading, setLoading] = useState(true);
-  const src = animeStreamUrl(malId, episode, audio);
+  const [server, setServer] = useState(readServer);
+  const src = animeStreamUrl(malId, episode, audio, server);
+
+  const changeServer = (id) => {
+    setServer(id);
+    try {
+      localStorage.setItem(SERVER_KEY, id);
+    } catch {
+      /* ignore */
+    }
+  };
 
   // Show the spinner again whenever the episode / audio changes.
   useEffect(() => {
@@ -112,6 +133,28 @@ export default function AnimePlayer({
           style={{ border: 0 }}
           onLoad={() => setLoading(false)}
         />
+      </div>
+
+      <div className="px-4 sm:px-6 py-2 flex items-center gap-2 overflow-x-auto no-scrollbar border-t border-border/40">
+        <span className="shrink-0 text-xs text-muted-foreground mr-1">Server</span>
+        {ANIME_SOURCES.map((s) => (
+          <button
+            key={s.id}
+            type="button"
+            onClick={() => changeServer(s.id)}
+            aria-pressed={server === s.id}
+            className={`shrink-0 h-8 px-4 rounded-full text-xs font-semibold border transition ${
+              server === s.id
+                ? "bg-primary text-primary-foreground border-transparent"
+                : "bg-white/5 border-border/60 text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            {s.label}
+          </button>
+        ))}
+        <span className="shrink-0 ml-2 text-[11px] text-muted-foreground/70">
+          Not playing? Try another server or Sub/Dub.
+        </span>
       </div>
 
       <div className="px-4 sm:px-6 py-2 flex items-center justify-between gap-3 border-t border-border/40">

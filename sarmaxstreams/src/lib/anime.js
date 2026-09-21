@@ -12,13 +12,40 @@
 
 import { tmdb } from "@/lib/tmdb";
 
-// >>> Change these two lines if your source changes <<<
+// >>> Change these if your sources change <<<
 export const ANIME_STREAM_BASE = "https://vidlink.pro/anime";
-export const AUDIO_OPTIONS = ["sub", "dub"]; // exact values your source expects
+export const AUDIO_OPTIONS = ["sub", "dub"]; // exact values your sources expect
 
-export function animeStreamUrl(malId, episode = 1, audio = "sub") {
+// Video servers. All take a MyAnimeList id. The player has buttons to switch between
+// them (if one says "couldn't find episode", another usually has it).
+// Add / remove / reorder here. The first one is the default.
+export const ANIME_SOURCES = [
+  {
+    id: "megaplay",
+    label: "Server 1",
+    url: (mal, ep, a) => `https://megaplay.buzz/stream/mal/${mal}/${ep}/${a}`,
+  },
+  {
+    id: "vidhawk-flow",
+    label: "Server 2",
+    url: (mal, ep, a) => `https://vidhawk.buzz/embed/mal/${mal}/${ep}/${a}?server=flow`,
+  },
+  {
+    id: "vidhawk-zuri",
+    label: "Server 3",
+    url: (mal, ep, a) => `https://vidhawk.buzz/embed/mal/${mal}/${ep}/${a}?server=zuri`,
+  },
+  {
+    id: "vidlink",
+    label: "Server 4",
+    url: (mal, ep, a) => `${ANIME_STREAM_BASE}/${mal}/${ep}/${a}`,
+  },
+];
+
+export function animeStreamUrl(malId, episode = 1, audio = "sub", sourceId) {
   const a = AUDIO_OPTIONS.includes(audio) ? audio : AUDIO_OPTIONS[0];
-  return `${ANIME_STREAM_BASE}/${encodeURIComponent(malId)}/${encodeURIComponent(episode)}/${a}`;
+  const src = ANIME_SOURCES.find((s) => s.id === sourceId) || ANIME_SOURCES[0];
+  return src.url(encodeURIComponent(malId), encodeURIComponent(episode), a);
 }
 
 // ------------------------- TMDB anime detection ----------------------------
@@ -60,42 +87,62 @@ function mapTmdb(results, kindOf) {
 const isoDay = (offsetDays = 0) =>
   new Date(Date.now() + offsetDays * 86400000).toISOString().slice(0, 10);
 
+// Some TMDB proxies ignore extra filters, which lets normal cartoons through.
+// So we ALSO filter every result ourselves (Animation + Japanese). We check once
+// whether the server's filtering works; if it doesn't, we read more pages per load.
+let filtersHonored = null; // null = not checked yet
+
+async function discoverAnime(path, params, page, media) {
+  const span = filtersHonored === false ? 4 : 1; // TMDB pages fetched per app page
+  const first = (page - 1) * span + 1;
+  const results = await Promise.all(
+    Array.from({ length: span }, (_, i) =>
+      tmdb(path, { ...params, page: first + i }).catch((e) => {
+        if (i === 0) throw e;
+        return null;
+      })
+    )
+  );
+  const raw = results.flatMap((d) => d?.results || []);
+  if (filtersHonored === null && raw.length) {
+    filtersHonored = raw.filter(isTmdbAnime).length / raw.length >= 0.8;
+    if (filtersHonored === false) return discoverAnime(path, params, page, media); // redo, wider
+  }
+  const totalPages = Math.min(results[0]?.total_pages || 1, 500);
+  return {
+    items: mapTmdb(raw.filter(isTmdbAnime), () => media),
+    hasNext: first + span - 1 < totalPages,
+  };
+}
+
 // kind: "airing" | "popular" | "top" | "movies"
 export async function animeList(kind = "airing", page = 1) {
   const base = {
     with_genres: ANIME_GENRE,
     with_original_language: "ja",
     include_adult: false,
-    page,
   };
-  let path = "discover/tv";
-  let params;
   switch (kind) {
     case "popular":
-      params = { ...base, sort_by: "popularity.desc" };
-      break;
+      return discoverAnime("discover/tv", { ...base, sort_by: "popularity.desc" }, page, "tv");
     case "top":
-      params = { ...base, sort_by: "vote_average.desc", "vote_count.gte": 200 };
-      break;
+      return discoverAnime(
+        "discover/tv",
+        { ...base, sort_by: "vote_average.desc", "vote_count.gte": 200 },
+        page,
+        "tv"
+      );
     case "movies":
-      path = "discover/movie";
-      params = { ...base, sort_by: "popularity.desc" };
-      break;
+      return discoverAnime("discover/movie", { ...base, sort_by: "popularity.desc" }, page, "movie");
     case "airing":
     default:
-      params = {
-        ...base,
-        sort_by: "popularity.desc",
-        "air_date.gte": isoDay(-14),
-        "air_date.lte": isoDay(7),
-      };
+      return discoverAnime(
+        "discover/tv",
+        { ...base, sort_by: "popularity.desc", "air_date.gte": isoDay(-14), "air_date.lte": isoDay(7) },
+        page,
+        "tv"
+      );
   }
-  const data = await tmdb(path, params);
-  const media = path === "discover/movie" ? "movie" : "tv";
-  return {
-    items: mapTmdb(data?.results, () => media),
-    hasNext: page < Math.min(data?.total_pages || 1, 500),
-  };
 }
 
 export async function animeSearch(query, page = 1) {
