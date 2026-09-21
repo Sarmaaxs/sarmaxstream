@@ -1,13 +1,18 @@
-
 const IMG_BASE = "https://image.tmdb.org/t/p";
+
+// Anime posters come from MyAnimeList as full URLs (https://...), so pass
+// those through untouched. TMDB paths (/abc.jpg) get the TMDB base added.
+const isAbsolute = (p) => /^https?:\/\//i.test(p);
 
 export function imageUrl(path, size = "w500") {
   if (!path) return null;
+  if (isAbsolute(path)) return path;
   return `${IMG_BASE}/${size}${path}`;
 }
 
 export function backdropUrl(path, size = "original") {
   if (!path) return null;
+  if (isAbsolute(path)) return path;
   return `${IMG_BASE}/${size}${path}`;
 }
 

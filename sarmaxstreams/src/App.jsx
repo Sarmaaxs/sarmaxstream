@@ -12,6 +12,8 @@ import Footer from '@/components/Footer';
 import Home from '@/pages/Home';
 import SearchPage from '@/pages/Search';
 import TitleDetail from '@/pages/TitleDetail';
+import AnimePage from '@/pages/Anime';
+import AnimeDetail from '@/pages/AnimeDetail';
 import WatchlistPage from '@/pages/Watchlist';
 import Login from '@/pages/Login';
 import Register from '@/pages/Register';
@@ -54,6 +56,8 @@ const AuthenticatedApp = () => {
       <Route path="/reset-password" element={<ResetPassword />} />
       <Route path="/" element={<Home />} />
       <Route path="/search" element={<SearchPage />} />
+      <Route path="/anime" element={<AnimePage />} />
+      <Route path="/title/anime/:id" element={<AnimeDetail />} />
       <Route path="/title/:type/:id" element={<TitleDetail />} />
       <Route path="/terms" element={<Terms />} />
       <Route path="/privacy" element={<Privacy />} />

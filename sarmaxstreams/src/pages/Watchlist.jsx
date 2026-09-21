@@ -5,6 +5,7 @@ import Navbar from "@/components/Navbar";
 import PosterGrid from "@/components/PosterGrid";
 import AccountDashboard from "@/components/AccountDashboard";
 import { getWatchlist, getContinueWatching, removeContinueWatching } from "@/lib/library";
+import { backdropUrl } from "@/lib/tmdb";
 
 export default function WatchlistPage() {
   const [watchlist, setWatchlist] = useState([]);
@@ -60,7 +61,7 @@ export default function WatchlistPage() {
                 <div key={c.id} className="group relative rounded-xl overflow-hidden bg-card border border-border/60 aspect-video">
                   <Link to={`/title/${c.media_type}/${c.tmdb_id}`} className="block w-full h-full">
                     <img
-                      src={c.backdrop_path ? `https://image.tmdb.org/t/p/w780${c.backdrop_path}` : ""}
+                      src={backdropUrl(c.backdrop_path, "w780") || undefined}
                       alt={c.title}
                       className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition"
                     />
@@ -74,6 +75,9 @@ export default function WatchlistPage() {
                           <div className="font-medium line-clamp-1">{c.title}</div>
                           {c.media_type === "tv" && c.season && (
                             <div className="text-xs text-muted-foreground">S{c.season}:E{c.episode}</div>
+                          )}
+                          {c.media_type === "anime" && c.episode && (
+                            <div className="text-xs text-muted-foreground">Ep {c.episode}</div>
                           )}
                         </div>
                       </div>

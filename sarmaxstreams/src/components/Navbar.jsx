@@ -23,7 +23,8 @@ export default function Navbar() {
   const links = [
   { label: "Home", to: "/" },
   { label: "Movies", to: "/search?genre=movie" },
-  { label: "TV Shows", to: "/search?genre=tv" }];
+  { label: "TV Shows", to: "/search?genre=tv" },
+  { label: "Anime", to: "/anime" }];
 
 
   return (

@@ -7,7 +7,9 @@ import {
   tmdbPopular,
   tmdbTopRated,
   tmdbByGenre,
+  backdropUrl,
 } from "@/lib/tmdb";
+import { animeList } from "@/lib/anime";
 import { getContinueWatching } from "@/lib/library";
 import { Link } from "react-router-dom";
 import { Play } from "lucide-react";
@@ -26,6 +28,7 @@ export default function Home() {
   const [trending, setTrending] = useState([]);
   const [popMovies, setPopMovies] = useState([]);
   const [popTv, setPopTv] = useState([]);
+  const [popAnime, setPopAnime] = useState([]);
   const [topRated, setTopRated] = useState([]);
   const [genreRows, setGenreRows] = useState([]);
   const [continueItems, setContinueItems] = useState([]);
@@ -81,6 +84,17 @@ export default function Home() {
     };
   }, []);
 
+  // Anime row loads on its own so a Jikan hiccup never breaks the home page.
+  useEffect(() => {
+    let active = true;
+    animeList("popular")
+      .then((r) => active && setPopAnime(r.items))
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
@@ -93,12 +107,12 @@ export default function Home() {
             <div className="flex gap-3 overflow-x-auto no-scrollbar pb-2">
               {continueItems.map((c) => (
                 <Link
-                  key={c.id}
+                  key={`${c.media_type}-${c.id}`}
                   to={`/title/${c.media_type}/${c.id}`}
                   className="group shrink-0 w-[260px] sm:w-[300px] rounded-xl overflow-hidden bg-card relative aspect-video"
                 >
                   <img
-                    src={c.backdrop_path ? `https://image.tmdb.org/t/p/w780${c.backdrop_path}` : ""}
+                    src={backdropUrl(c.backdrop_path, "w780") || undefined}
                     alt={c.name}
                     className="w-full h-full object-cover opacity-80 group-hover:opacity-100 transition"
                   />
@@ -113,6 +127,9 @@ export default function Home() {
                         {c.media_type === "tv" && c.season && (
                           <div className="text-xs text-muted-foreground">S{c.season}:E{c.episode}</div>
                         )}
+                        {c.media_type === "anime" && c.episode && (
+                          <div className="text-xs text-muted-foreground">Ep {c.episode}</div>
+                        )}
                       </div>
                     </div>
                   </div>
@@ -125,6 +142,7 @@ export default function Home() {
         <MovieRow title="Trending Now" items={trending} loading={loading} />
         <MovieRow title="Popular Movies" items={popMovies} loading={loading} />
         <MovieRow title="Popular Series" items={popTv} loading={loading} />
+        <MovieRow title="Popular Anime" items={popAnime} loading={false} />
         <MovieRow title="Top Rated" items={topRated} loading={loading} />
         {genreRows.map((g) => (
           <MovieRow key={g.label} title={g.label} items={g.items} loading={loading} />
