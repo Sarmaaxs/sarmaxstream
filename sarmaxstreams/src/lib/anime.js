@@ -1,13 +1,13 @@
 // ---------------------------------------------------------------------------
-// Anime helpers
-//  - LISTS + SEARCH come from TMDB (same reliable API your movies use).
-//  - The anime PLAYER needs a MyAnimeList (MAL) id, and TMDB doesn't have those.
-//    So when someone opens an anime we look up its MAL id once (via Jikan),
-//    remember it, and send them to the anime page (sub/dub player).
-//  - Anime DETAILS + EPISODES still come from Jikan (through /api/jikan proxy,
-//    with cache + retries + saved fallback).
-//  - Playback comes from YOUR source:
-//      https://vidlink.pro/anime/{MALid}/{number}/{subOrDub}
+// Anime helpers  (Jikan is NOT used anymore - it has been down since Aug 28)
+//
+//  - LISTS + SEARCH ........ TMDB (same API your movies use)
+//  - MAL id, details, episodes, related, recommendations ... AniList (free, no key)
+//  - PLAYBACK .............. YOUR source, which needs a MyAnimeList (MAL) id:
+//        https://vidlink.pro/anime/{MALid}/{number}/{sub|dub}
+//
+// AniList returns the MAL id as `idMal`, so all the /title/anime/:id links keep
+// using MAL ids exactly like before.
 // ---------------------------------------------------------------------------
 
 import { tmdb } from "@/lib/tmdb";
@@ -112,106 +112,17 @@ export async function animeSearch(query, page = 1) {
   return { items: mapTmdb(raw, (r) => r.media_type), hasNext: p1 + 1 < total };
 }
 
-// ------------------------- TMDB id -> MAL id -------------------------------
+// ------------------------- AniList client ----------------------------------
+// - Browsers send a Referer automatically, which AniList requires.
+// - Results are cached (10 min fresh), retried on failure, and if AniList is
+//   unreachable we fall back to the last saved copy (up to 7 days old).
 
-const MAP_KEY = "sarmaxstream:mal-map";
-
-function readMap() {
-  try {
-    return JSON.parse(localStorage.getItem(MAP_KEY)) || {};
-  } catch {
-    return {};
-  }
-}
-
-function saveMap(key, malId) {
-  try {
-    const m = readMap();
-    m[key] = malId;
-    localStorage.setItem(MAP_KEY, JSON.stringify(m));
-  } catch {
-    /* ignore */
-  }
-}
-
-const norm = (s) =>
-  (s || "")
-    .toLowerCase()
-    .normalize("NFKD")
-    .replace(/[^\p{L}\p{N}]+/gu, " ")
-    .trim();
-
-function scoreCandidate(a, wanted, kind, year) {
-  const names = [a.title, a.title_english, a.title_japanese, ...(a.titles || []).map((t) => t.title)]
-    .filter(Boolean)
-    .map(norm);
-
-  let s = 0;
-  if (wanted.some((w) => names.includes(w))) s += 100;
-  else if (
-    wanted.some((w) => w.length >= 4 && names.some((n) => n.startsWith(w) || w.startsWith(n)))
-  )
-    s += 40;
-
-  if (kind === "movie") s += a.type === "Movie" ? 20 : -20;
-  else if (a.type === "TV") s += 20;
-  else if (a.type === "ONA") s += 10;
-  else if (a.type === "Movie") s -= 20;
-  else s -= 5;
-
-  const ay = a.aired?.prop?.from?.year ?? a.year;
-  if (year && ay) {
-    const d = Math.abs(ay - year);
-    s += d === 0 ? 30 : d === 1 ? 15 : d <= 3 ? 0 : -10;
-  }
-  s += Math.min(5, (a.members || 0) / 200000); // tie-breaker: the more popular entry
-  return s;
-}
-
-// kind: "tv" | "movie"  (the TMDB type).  Returns the MAL id, or throws.
-export async function animeFindMalId(kind, tmdbId) {
-  const key = `${kind}:${tmdbId}`;
-  const known = readMap()[key];
-  if (known) return known;
-
-  const d = await tmdb(`${kind}/${tmdbId}`);
-  const names = [...new Set([d.name || d.title, d.original_name || d.original_title].filter(Boolean))];
-  const wanted = names.map(norm);
-  const year = parseInt((d.first_air_date || d.release_date || "").slice(0, 4), 10) || null;
-
-  for (const q of names) {
-    const json = await jikan("anime", { q, limit: 10, sfw: true });
-    let best = null;
-    for (const a of json.data || []) {
-      const s = scoreCandidate(a, wanted, kind, year);
-      if (!best || s > best.s) best = { a, s };
-    }
-    if (best && best.s >= 60) {
-      saveMap(key, best.a.mal_id);
-      return best.a.mal_id;
-    }
-  }
-  throw new Error("Couldn't find this title on the anime source.");
-}
-
-// ------------------------- Jikan (details / episodes) ----------------------
-//
-// How requests work (so a Jikan 504 doesn't break the site):
-//   1. Memory / localStorage cache (fresh for 10 min)  -> instant, no request
-//   2. Your Vercel proxy  /api/jikan  (CDN-cached)     -> preferred
-//   3. Jikan directly                                  -> fallback
-//   Each attempt has a timeout, and we retry up to 4 times with backoff.
-//   4. If everything fails, show the last saved copy (up to 7 days old)
-//      instead of an error. Only throw if there's nothing saved at all.
-
-const JIKAN_DIRECT = "https://api.jikan.moe/v4";
-const PROXY = "/api/jikan";
-
+const ANILIST = "https://graphql.anilist.co";
 const FRESH_MS = 10 * 60 * 1000;
 const STALE_MS = 7 * 24 * 60 * 60 * 1000;
-const ATTEMPT_TIMEOUT_MS = 12000;
-const RETRY_DELAYS = [0, 800, 1600, 3000];
-const LS_PREFIX = "jikan:";
+const ATTEMPT_TIMEOUT_MS = 10000;
+const RETRY_DELAYS = [0, 1000, 2500];
+const LS_PREFIX = "anilist:";
 
 const mem = new Map();
 const inflight = new Map();
@@ -241,32 +152,32 @@ function lsSet(key, entry) {
   }
 }
 
-async function fetchJson(url) {
+async function fetchGql(query, variables) {
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), ATTEMPT_TIMEOUT_MS);
   try {
-    const res = await fetch(url, { signal: ctrl.signal, headers: { Accept: "application/json" } });
-    if (!res.ok) {
-      const err = new Error(`HTTP ${res.status}`);
+    const res = await fetch(ANILIST, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify({ query, variables }),
+      signal: ctrl.signal,
+    });
+    const json = await res.json().catch(() => null);
+    if (!res.ok || !json || !json.data) {
+      const err = new Error(json?.errors?.[0]?.message || `HTTP ${res.status}`);
       err.status = res.status;
+      err.retryAfter = Number(res.headers.get("Retry-After")) || 0;
       throw err;
     }
-    // Local dev / proxy not deployed: /api/jikan returns index.html -> fall through to direct.
-    const ct = res.headers.get("content-type") || "";
-    if (!ct.includes("json")) throw new Error("Not JSON");
-    return await res.json();
+    return json.data;
   } finally {
     clearTimeout(timer);
   }
 }
 
-async function jikan(path, params = {}) {
-  const qs = new URLSearchParams();
-  Object.entries(params).forEach(([k, v]) => {
-    if (v !== undefined && v !== null && v !== "") qs.set(k, String(v));
-  });
-  const qsStr = qs.toString();
-  const key = `${path}${qsStr ? `?${qsStr}` : ""}`;
+// name + variables make the cache key; query is the GraphQL text.
+async function gql(name, query, variables = {}) {
+  const key = `${name}:${JSON.stringify(variables)}`;
 
   const m = mem.get(key);
   if (m && Date.now() - m.t < FRESH_MS) return m.data;
@@ -278,28 +189,28 @@ async function jikan(path, params = {}) {
 
   if (inflight.has(key)) return inflight.get(key);
 
-  const proxyUrl = `${PROXY}?path=${encodeURIComponent(path)}${qsStr ? `&${qsStr}` : ""}`;
-  const directUrl = `${JIKAN_DIRECT}/${path}${qsStr ? `?${qsStr}` : ""}`;
-
   const run = async () => {
+    let extraWait = 0;
     for (let i = 0; i < RETRY_DELAYS.length; i++) {
-      if (RETRY_DELAYS[i]) await sleep(RETRY_DELAYS[i]);
-      const url = i % 2 === 0 ? proxyUrl : directUrl;
+      const wait = Math.max(RETRY_DELAYS[i], extraWait);
+      if (wait) await sleep(wait);
+      extraWait = 0;
       try {
-        const json = await fetchJson(url);
-        const entry = { t: Date.now(), data: json };
+        const data = await fetchGql(query, variables);
+        const entry = { t: Date.now(), data };
         mem.set(key, entry);
         lsSet(key, entry);
-        return json;
+        return data;
       } catch (e) {
         if (e.status === 400 || e.status === 404) throw new Error("Anime not found.");
-        // 429 / 5xx / timeout / network error -> try again
+        if (e.status === 429) extraWait = Math.min((e.retryAfter || 2) * 1000, 6000);
+        // 403 / 5xx / timeout / network error -> try again
       }
     }
 
     const old = mem.get(key) || lsGet(key);
     if (old && Date.now() - old.t < STALE_MS) {
-      console.warn("Jikan unavailable, showing saved data for", key);
+      console.warn("AniList unavailable, showing saved data for", key);
       return old.data;
     }
     throw new Error("Anime service is busy. Please try again.");
@@ -310,67 +221,257 @@ async function jikan(path, params = {}) {
   return p;
 }
 
-// Convert a Jikan anime object into the same shape the app uses for TMDB
+// ------------------------- TMDB id -> MAL id -------------------------------
+
+const SEARCH_QUERY = `
+query ($search: String) {
+  Page(page: 1, perPage: 10) {
+    media(search: $search, type: ANIME, sort: SEARCH_MATCH) {
+      idMal
+      title { romaji english native }
+      synonyms
+      format
+      startDate { year }
+      popularity
+    }
+  }
+}`;
+
+const MAP_KEY = "sarmaxstream:mal-map";
+
+function readMap() {
+  try {
+    return JSON.parse(localStorage.getItem(MAP_KEY)) || {};
+  } catch {
+    return {};
+  }
+}
+
+function saveMap(key, malId) {
+  try {
+    const m = readMap();
+    m[key] = malId;
+    localStorage.setItem(MAP_KEY, JSON.stringify(m));
+  } catch {
+    /* ignore */
+  }
+}
+
+const norm = (s) =>
+  (s || "")
+    .toLowerCase()
+    .normalize("NFKD")
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
+
+function scoreCandidate(m, wanted, kind, year) {
+  const names = [m.title?.romaji, m.title?.english, m.title?.native, ...(m.synonyms || [])]
+    .filter(Boolean)
+    .map(norm);
+
+  let s = 0;
+  if (wanted.some((w) => names.includes(w))) s += 100;
+  else if (
+    wanted.some((w) => w.length >= 4 && names.some((n) => n.startsWith(w) || w.startsWith(n)))
+  )
+    s += 40;
+
+  const f = m.format;
+  if (kind === "movie") s += f === "MOVIE" ? 20 : -20;
+  else if (f === "TV" || f === "TV_SHORT") s += 20;
+  else if (f === "ONA") s += 10;
+  else if (f === "MOVIE") s -= 20;
+  else s -= 5;
+
+  const ay = m.startDate?.year;
+  if (year && ay) {
+    const d = Math.abs(ay - year);
+    s += d === 0 ? 30 : d === 1 ? 15 : d <= 3 ? 0 : -10;
+  }
+  s += Math.min(5, (m.popularity || 0) / 50000); // tie-breaker: the more popular entry
+  return s;
+}
+
+// kind: "tv" | "movie"  (the TMDB type).  Returns the MAL id, or throws.
+export async function animeFindMalId(kind, tmdbId) {
+  const key = `${kind}:${tmdbId}`;
+  const known = readMap()[key];
+  if (known) return known;
+
+  const d = await tmdb(`${kind}/${tmdbId}`);
+  const names = [...new Set([d.name || d.title, d.original_name || d.original_title].filter(Boolean))];
+  const wanted = names.map(norm);
+  const year = parseInt((d.first_air_date || d.release_date || "").slice(0, 4), 10) || null;
+
+  for (const q of names) {
+    const data = await gql("search", SEARCH_QUERY, { search: q });
+    let best = null;
+    for (const m of data?.Page?.media || []) {
+      if (!m.idMal) continue;
+      const s = scoreCandidate(m, wanted, kind, year);
+      if (!best || s > best.s) best = { m, s };
+    }
+    if (best && best.s >= 60) {
+      saveMap(key, best.m.idMal);
+      return best.m.idMal;
+    }
+  }
+  throw new Error("Couldn't find this title on the anime source.");
+}
+
+// ------------------------- AniList details ---------------------------------
+
+const DETAIL_QUERY = `
+query ($id: Int) {
+  Media(idMal: $id, type: ANIME) {
+    idMal
+    title { romaji english native }
+    format
+    status
+    episodes
+    duration
+    genres
+    averageScore
+    description(asHtml: false)
+    startDate { year }
+    seasonYear
+    coverImage { extraLarge large }
+    bannerImage
+    studios(isMain: true) { nodes { name } }
+    nextAiringEpisode { episode }
+    streamingEpisodes { title }
+    relations {
+      edges {
+        relationType(version: 2)
+        node { idMal type title { romaji english } }
+      }
+    }
+    recommendations(sort: RATING_DESC, perPage: 20) {
+      nodes {
+        mediaRecommendation {
+          idMal
+          title { romaji english }
+          description(asHtml: false)
+          coverImage { extraLarge large }
+          bannerImage
+          averageScore
+          startDate { year }
+        }
+      }
+    }
+  }
+}`;
+
+const stripHtml = (s) =>
+  (s || "")
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .trim();
+
+const FORMAT = { TV: "TV", TV_SHORT: "TV", MOVIE: "Movie", SPECIAL: "Special", OVA: "OVA", ONA: "ONA", MUSIC: "Music" };
+const STATUS = {
+  FINISHED: "Finished Airing",
+  RELEASING: "Currently Airing",
+  NOT_YET_RELEASED: "Not yet aired",
+  CANCELLED: "Cancelled",
+  HIATUS: "On Hiatus",
+};
+const prettyRelation = (r) =>
+  (r || "")
+    .toLowerCase()
+    .split("_")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+
+// Convert an AniList media object into the same shape the app uses for TMDB
 // items, so MovieCard / MovieRow / PosterGrid / Watchlist all just work.
-export function normalizeAnime(a) {
-  const poster =
-    a.images?.jpg?.large_image_url ||
-    a.images?.webp?.large_image_url ||
-    a.images?.jpg?.image_url ||
-    "";
-  const trailerImg =
-    a.trailer?.images?.maximum_image_url || a.trailer?.images?.large_image_url || "";
-  const title = a.title_english || a.title || "Untitled";
-  const year = a.aired?.from ? a.aired.from.slice(0, 4) : a.year ? String(a.year) : "";
+// NOTE: `id` is the MAL id (that's what the anime player needs).
+export function normalizeAnime(m) {
+  const poster = m.coverImage?.extraLarge || m.coverImage?.large || "";
+  const title = m.title?.english || m.title?.romaji || "Untitled";
+  const year = m.startDate?.year || m.seasonYear || "";
   return {
-    id: a.mal_id,
+    id: m.idMal,
     media_type: "anime",
     title,
     name: title,
     poster_path: poster,
-    backdrop_path: trailerImg || poster,
-    backdrop_is_poster: !trailerImg,
-    overview: a.synopsis || "",
-    release_date: year,
-    vote_average: a.score || 0,
+    backdrop_path: m.bannerImage || poster,
+    backdrop_is_poster: !m.bannerImage,
+    overview: stripHtml(m.description),
+    release_date: year ? String(year) : "",
+    vote_average: m.averageScore ? m.averageScore / 10 : 0,
   };
 }
 
+async function getMedia(malId) {
+  const data = await gql("detail", DETAIL_QUERY, { id: Number(malId) });
+  if (!data?.Media) throw new Error("Anime not found.");
+  return data.Media;
+}
+
 export async function animeDetails(id) {
-  const json = await jikan(`anime/${encodeURIComponent(id)}/full`);
-  const a = json.data;
+  const m = await getMedia(id);
+
+  // How many episodes to show: total if known, else however many have aired so far.
+  const aired = m.nextAiringEpisode?.episode ? m.nextAiringEpisode.episode - 1 : null;
+  const isMovie = m.format === "MOVIE";
+  const episodes = isMovie ? 1 : m.episodes || aired || null;
+
+  // Same shape the detail page expects: [{ relation, entry: [{ type, mal_id, name }] }]
+  const relations = (m.relations?.edges || [])
+    .filter((e) => e.node?.type === "ANIME" && e.node.idMal)
+    .map((e) => ({
+      relation: prettyRelation(e.relationType),
+      entry: [
+        {
+          type: "anime",
+          mal_id: e.node.idMal,
+          name: e.node.title?.english || e.node.title?.romaji || "Untitled",
+        },
+      ],
+    }));
+
   return {
-    ...normalizeAnime(a),
-    japanese_title: a.title_japanese || "",
-    type: a.type || "",
-    episodes: a.episodes || null,
-    status: a.status || "",
-    duration: a.duration || "",
-    genres: (a.genres || []).map((g) => g.name),
-    studios: (a.studios || []).map((s) => s.name),
-    relations: a.relations || [],
+    ...normalizeAnime(m),
+    japanese_title: m.title?.native || "",
+    type: FORMAT[m.format] || "",
+    episodes,
+    status: STATUS[m.status] || "",
+    duration: m.duration ? `${m.duration} min` : "",
+    genres: m.genres || [],
+    studios: (m.studios?.nodes || []).map((s) => s.name),
+    relations,
   };
 }
 
 // 100 episodes per page (page 1 = episodes 1-100, page 2 = 101-200, ...)
 export async function animeEpisodes(id, page = 1) {
-  const json = await jikan(`anime/${encodeURIComponent(id)}/episodes`, { page });
-  return {
-    episodes: (json.data || []).map((e) => ({
-      number: e.mal_id, // in Jikan's episode list, mal_id is the episode number
-      title: e.title || "",
-      aired: e.aired || "",
-      filler: !!e.filler,
-      recap: !!e.recap,
-    })),
-    lastPage: json.pagination?.last_visible_page || 1,
-  };
+  const m = await getMedia(id);
+  const aired = m.nextAiringEpisode?.episode ? m.nextAiringEpisode.episode - 1 : null;
+  const total = m.format === "MOVIE" ? 1 : m.episodes || aired || 0;
+
+  // Episode titles, when AniList has them ("Episode 5 - Title")
+  const titles = {};
+  for (const s of m.streamingEpisodes || []) {
+    const match = /^Episode\s+(\d+)\s*[-–:]\s*(.+)$/i.exec(s.title || "");
+    if (match) titles[Number(match[1])] = match[2];
+  }
+
+  const start = (page - 1) * 100 + 1;
+  const end = Math.min(total, page * 100);
+  const episodes = [];
+  for (let n = start; n <= end; n++) {
+    episodes.push({ number: n, title: titles[n] || `Episode ${n}`, aired: "", filler: false, recap: false });
+  }
+  return { episodes, lastPage: Math.max(1, Math.ceil(total / 100)) };
 }
 
 export async function animeRecommendations(id) {
-  const json = await jikan(`anime/${encodeURIComponent(id)}/recommendations`);
-  return (json.data || [])
-    .filter((r) => r.entry?.mal_id)
+  const m = await getMedia(id);
+  return (m.recommendations?.nodes || [])
+    .map((n) => n.mediaRecommendation)
+    .filter((r) => r?.idMal)
     .slice(0, 20)
-    .map((r) => normalizeAnime(r.entry));
+    .map(normalizeAnime);
 }
