@@ -4,7 +4,11 @@ import { recordContinueWatching } from "@/lib/library";
 
 const SAFE_KEY = "sarmaxstream:movie-popup-block";
 // Sandbox lets the player run but blocks it from opening tabs or redirecting the page.
-const SANDBOX = "allow-scripts allow-same-origin allow-forms allow-presentation";
+// This lets popups open (so the player's own script doesn't refuse to run —
+// most of it hits the browser's native popup blocker or an ad blocker anyway),
+// but leaves out allow-top-navigation, so the player can NEVER redirect your
+// whole page away. That's the one thing this sandbox guarantees.
+const SANDBOX = "allow-scripts allow-same-origin allow-forms allow-presentation allow-popups allow-popups-to-escape-sandbox";
 const IS_MOBILE = typeof navigator !== "undefined" && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
 function readSafe() {
@@ -103,18 +107,18 @@ export default function VideoPlayer({ open, onClose, mediaType, tmdbId, title, p
           type="button"
           onClick={toggleSafe}
           aria-pressed={safe}
-          title="Stops the video from opening new tabs or redirecting this page"
+          title="Stops the page itself from being redirected. New-tab pop-ups may still slip through; a browser ad blocker like uBlock Origin catches most of those."
           className={`h-8 px-4 rounded-full text-xs font-semibold border transition ${
             safe
               ? "bg-white/10 border-primary/60 text-foreground"
               : "bg-white/5 border-border/60 text-muted-foreground hover:text-foreground"
           }`}
         >
-          Block pop-ups: {safe ? "On" : "Off"}
+          Block redirects: {safe ? "On" : "Off"}
         </button>
         <span className="text-[11px] text-muted-foreground/70 flex items-center gap-2">
           <AlertTriangle className="w-3 h-3" />
-          Stream provided by a third-party embed. sarmaxstream does not host any video files.
+          sarmaxstream does not host any video files. Enjoy
         </span>
       </div>
     </div>
