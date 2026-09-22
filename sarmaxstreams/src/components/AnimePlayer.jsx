@@ -10,12 +10,18 @@ const SAFE_KEY = "sarmaxstream:anime-popup-block";
 // but blocks it from opening new tabs or redirecting your whole page.
 const SANDBOX = "allow-scripts allow-same-origin allow-forms allow-presentation";
 
+const IS_MOBILE = typeof navigator !== "undefined" && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+
 function readSafe() {
   try {
-    return localStorage.getItem(SAFE_KEY) !== "off"; // ON unless the user turned it off
+    const v = localStorage.getItem(SAFE_KEY);
+    if (v) return v === "on";
   } catch {
-    return true;
+    /* ignore */
   }
+  // No saved choice yet: on for desktop, off for mobile (many mobile embeds
+  // refuse to play at all inside a sandboxed iframe and show "sandbox detected").
+  return !IS_MOBILE;
 }
 
 function readServer() {
