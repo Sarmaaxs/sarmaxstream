@@ -146,11 +146,14 @@ export default function AnimeDetail() {
 
   const title = data.title;
   const isMovie = data.type === "Movie";
-  const related = (data.relations || []).flatMap((r) =>
+  const allRelated = (data.relations || []).flatMap((r) =>
     (r.entry || [])
       .filter((e) => e.type === "anime")
-      .map((e) => ({ relation: r.relation, id: e.mal_id, name: e.name }))
+      .map((e) => ({ relation: r.relation, rawType: r.rawType, id: e.mal_id, name: e.name }))
   );
+  // Other seasons (prequel/sequel chain) shown separately from movies/side-stories/spin-offs.
+  const seasons = allRelated.filter((r) => r.rawType === "PREQUEL" || r.rawType === "SEQUEL");
+  const related = allRelated.filter((r) => r.rawType !== "PREQUEL" && r.rawType !== "SEQUEL");
 
   const playEp = (n) => setPlayer({ open: true, episode: n });
 
@@ -316,7 +319,30 @@ export default function AnimeDetail() {
           </div>
         )}
 
-        {/* Other seasons / movies / side stories */}
+        {/* Other seasons */}
+        {seasons.length > 0 && (
+          <div className="mt-12">
+            <h2 className="font-display font-bold text-xl mb-4">Seasons</h2>
+            <div className="flex flex-wrap gap-2">
+              {seasons.map((r) => (
+                <Link
+                  key={`${r.relation}-${r.id}`}
+                  to={`/title/anime/${r.id}`}
+                  className={`px-4 py-2 rounded-full border text-sm transition ${
+                    String(r.id) === String(data.id)
+                      ? "bg-primary text-primary-foreground border-transparent"
+                      : "bg-white/5 border-border/60 hover:bg-white/10"
+                  }`}
+                >
+                  <span className="text-xs mr-2 opacity-70">{r.relation}</span>
+                  {r.name}
+                </Link>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Movies / side stories / spin-offs */}
         {related.length > 0 && (
           <div className="mt-12">
             <h2 className="font-display font-bold text-xl mb-4">Related</h2>

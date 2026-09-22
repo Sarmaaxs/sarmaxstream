@@ -470,6 +470,7 @@ export async function animeDetails(id) {
     .filter((e) => e.node?.type === "ANIME" && e.node.idMal)
     .map((e) => ({
       relation: prettyRelation(e.relationType),
+      rawType: e.relationType, // "PREQUEL" / "SEQUEL" / "SIDE_STORY" / etc.
       entry: [
         {
           type: "anime",
