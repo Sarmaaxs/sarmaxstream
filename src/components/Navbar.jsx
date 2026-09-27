@@ -24,7 +24,8 @@ export default function Navbar() {
   { label: "Home", to: "/" },
   { label: "Movies", to: "/search?genre=movie" },
   { label: "TV Shows", to: "/search?genre=tv" },
-  { label: "Anime", to: "/anime" }];
+  { label: "Anime", to: "/anime" },
+  { label: "Music", to: "/music" }];
 
 
   return (
@@ -49,7 +50,6 @@ export default function Navbar() {
           )}
         </nav>
 
-        {/* Phones use the search field on the Search page instead. */}
         <div className="hidden sm:block flex-1 max-w-md ml-auto">
           <SearchBox size="nav" />
         </div>
@@ -57,7 +57,6 @@ export default function Navbar() {
         <div className="flex items-center gap-2 ml-auto sm:ml-2">
           {authed ?
           <>
-            {/* On phones "My List" lives in the bottom tab bar. */}
             <Link
               to="/watchlist"
               className="hidden md:flex items-center gap-2 h-10 px-3 rounded-full bg-white/5 border border-border/60 text-sm hover:bg-white/10 transition-colors">

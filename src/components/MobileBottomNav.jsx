@@ -1,22 +1,16 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Home, Search, Bookmark } from "lucide-react";
+import { Home, Search, Bookmark, Music4 } from "lucide-react";
 
 const TABS = [
   { label: "Home", to: "/", icon: Home, match: (p) => p === "/" },
   { label: "Search", to: "/search", icon: Search, match: (p) => p.startsWith("/search") },
+  { label: "Music", to: "/music", icon: Music4, match: (p) => p.startsWith("/music") },
   { label: "My List", to: "/watchlist", icon: Bookmark, match: (p) => p.startsWith("/watchlist") },
 ];
 
-// Routes that are full-screen flows and shouldn't show the tab bar.
 const HIDDEN_ON = ["/login", "/register", "/forgot-password", "/reset-password"];
 
-/**
- * Bottom tab bar for phones / native WebView shells. Only rendered below the
- * `md` breakpoint (768px) via `md:hidden`, so there's no JS resize handling and
- * no flash on first paint. Pair with the `.pb-page` utility on page content so
- * the last row of content can scroll clear of it.
- */
 export default function MobileBottomNav() {
   const { pathname } = useLocation();
   if (HIDDEN_ON.includes(pathname)) return null;
