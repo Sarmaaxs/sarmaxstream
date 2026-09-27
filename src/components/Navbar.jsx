@@ -24,6 +24,7 @@ export default function Navbar() {
   { label: "Home", to: "/" },
   { label: "Movies", to: "/search?genre=movie" },
   { label: "TV Shows", to: "/search?genre=tv" },
+  { label: "Horror", to: "/search?genre=horror" },
   { label: "Anime", to: "/anime" },
   { label: "Music", to: "/music" }];
 

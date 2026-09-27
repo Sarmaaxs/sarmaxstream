@@ -30,6 +30,7 @@ export default function Home() {
       </div>
 
       <section>
+        <h2 className="text-lg font-semibold mb-4 text-white/90">Famous Songs</h2>
         {loading ? (
           <div className="flex justify-center py-12 text-white/40"><Loader2 className="animate-spin" /></div>
         ) : (

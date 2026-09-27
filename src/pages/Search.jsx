@@ -6,11 +6,15 @@ import SearchBox from "@/components/SearchBox";
 import PosterGrid from "@/components/PosterGrid";
 import { tmdbSearch, tmdbPopular, tmdbByGenre, tmdbGenres } from "@/lib/tmdb";
 
+// TMDB's Horror genre id (movies only — TMDB has no equivalent Horror genre
+// for TV, so the Horror tab shows horror movies).
+const HORROR_GENRE_ID = 27;
+
 export default function SearchPage() {
   const location = useLocation();
   const params = new URLSearchParams(location.search);
   const q = params.get("q") || "";
-  const browseType = params.get("genre"); // "movie" | "tv"
+  const browseType = params.get("genre"); // "movie" | "tv" | "horror"
 
   const [results, setResults] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -37,6 +41,13 @@ export default function SearchPage() {
           setResults((pop?.results || []).filter((r) => r.poster_path));
           setGenres(g?.genres || []);
           setActiveGenre(null);
+        } else if (browseType === "horror") {
+          setTitle("Horror");
+          const data = await tmdbByGenre("movie", HORROR_GENRE_ID, 1);
+          if (!active) return;
+          setResults((data?.results || []).filter((r) => r.poster_path));
+          setGenres([]);
+          setActiveGenre(null);
         } else {
           setTitle("Search");
           setResults([]);
@@ -52,7 +63,7 @@ export default function SearchPage() {
   }, [q, browseType]);
 
   useEffect(() => {
-    if (!browseType || q) return;
+    if (!browseType || q || browseType === "horror") return;
     let active = true;
     (async () => {
       setLoading(true);
@@ -90,6 +101,7 @@ export default function SearchPage() {
             {[
               { label: "Movies", value: "movie" },
               { label: "TV Shows", value: "tv" },
+              { label: "Horror", value: "horror" },
             ].map((c) => (
               <Link
                 key={c.value}

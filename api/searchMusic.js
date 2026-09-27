@@ -24,7 +24,7 @@ const SHORTS_TAG = /#shorts?\b/i;
 
 function decodeHtml(s) {
   if (!s) return '';
-  return s.replace(/&/g, '&').replace(/&#39;/g, "'").replace(/"/g, '"').replace(/</g, '<').replace(/>/g, '>');
+  return s.replace(/&amp;/g, '&').replace(/&#39;/g, "'").replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
 }
 
 function cleanTitle(title) {
@@ -148,10 +148,44 @@ export default async function handler(req, res) {
     const apiKey = process.env.YOUTUBE_API_KEY;
     if (!apiKey) return res.status(500).json({ error: 'YouTube API key not configured' });
 
-    let url;
+    // "Famous Songs" home section: merge a couple of regions' music charts so
+    // it isn't just one country's algorithmic trending list. Cheap: 1 quota
+    // unit per region (videos.list), not the 100-unit search endpoint.
     if (mode === 'trending') {
-      url = `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,statistics&chart=mostPopular&videoCategoryId=10&maxResults=${maxResults}&key=${apiKey}`;
-    } else if (mode === 'artists') {
+      const regions = ['US', 'GB'];
+      const perRegion = Math.min(maxResults, 50);
+      const regionResults = await Promise.all(regions.map((r) =>
+        fetch(`https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,statistics&chart=mostPopular&videoCategoryId=10&regionCode=${r}&maxResults=${perRegion}&key=${apiKey}`)
+          .then((res2) => res2.json())
+          .catch(() => ({ items: [] }))
+      ));
+      const seenIds = new Set();
+      const merged = [];
+      for (const d of regionResults) {
+        for (const it of d.items || []) {
+          if (it.id && !seenIds.has(it.id)) { seenIds.add(it.id); merged.push(it); }
+        }
+      }
+      let tracks = merged.map((it, i) => buildTrack({
+        videoId: it.id,
+        rawTitle: it.snippet?.title,
+        channelTitle: it.snippet?.channelTitle,
+        thumbnail: it.snippet?.thumbnails?.medium?.url || it.snippet?.thumbnails?.default?.url,
+        durationIso: it.contentDetails?.duration,
+        views: Number(it.statistics?.viewCount || 0),
+        idx: i,
+      }))
+        .filter((t) => !isJunk(t._rawTitle, '', true))
+        .filter((t) => isReasonableLength(isoToSeconds(t.duration)));
+      tracks.sort((a, b) => b._views - a._views);
+      tracks = dedupeTracks(tracks);
+      tracks.sort((a, b) => b._views - a._views);
+      tracks = tracks.slice(0, maxResults).map((t) => ({ ...stripInternal(t), verified: false }));
+      return res.status(200).json({ tracks, artist: null, nextPageToken: '' });
+    }
+
+    let url;
+    if (mode === 'artists') {
       if (!query) return res.status(200).json({ artists: [] });
       url = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(query)}&maxResults=${maxResults}&key=${apiKey}`;
     } else if (mode === 'artistSongs') {
@@ -219,22 +253,7 @@ export default async function handler(req, res) {
     const strictDuration = mode !== 'artistSongs';
     let tracks;
 
-    if (mode === 'trending') {
-      tracks = (data.items || []).map((it, i) => buildTrack({
-        videoId: it.id,
-        rawTitle: it.snippet?.title,
-        channelTitle: it.snippet?.channelTitle,
-        thumbnail: it.snippet?.thumbnails?.medium?.url || it.snippet?.thumbnails?.default?.url,
-        durationIso: it.contentDetails?.duration,
-        views: Number(it.statistics?.viewCount || 0),
-        idx: i,
-      }))
-        .filter((t) => !isJunk(t._rawTitle, '', includeSoft))
-        .filter((t) => !strictDuration || isReasonableLength(isoToSeconds(t.duration)));
-      tracks.sort((a, b) => b._views - a._views);
-      tracks = dedupeTracks(tracks);
-      tracks.sort((a, b) => b._views - a._views);
-    } else {
+    {
       const ids = (data.items || []).map((it) => it.id?.videoId).filter(Boolean).join(',');
       const durMap = {};
       const viewsMap = {};
