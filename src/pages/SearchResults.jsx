@@ -16,7 +16,7 @@ export default function SearchResults() {
     (async () => {
       try {
         const res = await fetch('/api/searchMusic', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: q, mode: 'artists', maxResults: 20 }) }).then(r => r.json());
-        setArtists(res.data?.artists || []);
+        setArtists(res.artists || []);
       } catch {}
       setLoading(false);
     })();

@@ -12,7 +12,7 @@ export default function Home() {
     (async () => {
       try {
         const res = await fetch('/api/searchMusic', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'trending', maxResults: 50 }) }).then(r => r.json());
-        setTracks(res.data?.tracks || []);
+        setTracks(res.tracks || []);
       } catch {}
       setLoading(false);
     })();

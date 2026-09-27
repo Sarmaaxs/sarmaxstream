@@ -21,8 +21,8 @@ export default function Artist() {
     (async () => {
       try {
         const res = await fetch('/api/searchMusic', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'artistSongs', channelId, maxResults: 50 }) }).then(r => r.json());
-        setTracks(res.data?.tracks || []);
-        setArtist(res.data?.artist || null);
+        setTracks(res.tracks || []);
+        setArtist(res.artist || null);
       } catch {}
       setLoading(false);
     })();

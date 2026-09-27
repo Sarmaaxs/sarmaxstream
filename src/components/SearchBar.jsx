@@ -22,7 +22,7 @@ export default function SearchBar({ initial = '' }) {
       setLoading(true);
       try {
         const res = await fetch('/api/searchMusic', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: v, mode: 'search', maxResults: 6 }) }).then(r => r.json());
-        setResults(res.data?.tracks || []);
+        setResults(res.tracks || []);
         setOpen(true);
       } catch {}
       setLoading(false);

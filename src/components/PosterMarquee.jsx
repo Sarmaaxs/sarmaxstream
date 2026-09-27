@@ -7,7 +7,7 @@ export default function PosterMarquee() {
     (async () => {
       try {
         const res = await fetch('/api/searchMusic', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'trending', maxResults: 24 }) }).then(r => r.json());
-        setImgs((res.data?.tracks || []).map((t) => t.thumbnail).filter(Boolean));
+        setImgs((res.tracks || []).map((t) => t.thumbnail).filter(Boolean));
       } catch {}
     })();
   }, []);

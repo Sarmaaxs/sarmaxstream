@@ -32,11 +32,11 @@ export default function DogMascot() {
     const artists = Array.from(new Set(recent.map((t) => t.artist).filter(Boolean))).slice(0, 5);
     const tasks = artists.map((a) =>
     fetch('/api/searchMusic', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: a, mode: 'search', maxResults: 6 }) }).then(r => r.json()).
-    then((r) => r.data?.tracks || []).catch(() => [])
+    then((r) => r.tracks || []).catch(() => [])
     );
     tasks.push(
       fetch('/api/searchMusic', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'trending', maxResults: 24 }) }).then(r => r.json()).
-      then((r) => r.data?.tracks || []).catch(() => [])
+      then((r) => r.tracks || []).catch(() => [])
     );
     const results = await Promise.all(tasks);
     let all = [];
