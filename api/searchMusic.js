@@ -1,0 +1,299 @@
+// api/searchMusic.js — REPLACES base44/functions/searchMusic/entry.ts
+// Deploy target: Vercel serverless function (drop straight in /api on Vercel)
+// or Railway/Express (wrap the handler in an app.post route — same body).
+//
+// Env var needed: YOUTUBE_API_KEY  (set in Vercel/Railway project settings,
+// NOT in a committed .env file).
+//
+// Call it the same way you called base44.functions.invoke('searchMusic', body):
+//   fetch('/api/searchMusic', { method: 'POST', body: JSON.stringify(body) })
+//
+// NEW vs. the Base44 version:
+//   - Shorts filter fix (see searchMusic-shorts-fix.md for the isolated diff)
+//   - "Real results" verification: for mode:'search', cross-checks results
+//     against Apple's free iTunes Search API (no key required) to confirm
+//     the track actually exists as a released song, not just a YouTube
+//     upload with a song-like title. Verified matches get `verified: true`
+//     and are sorted first. This only fires ONCE per search submit (not per
+//     keystroke) — one extra network call, not per-result, so it stays fast
+//     and won't hit iTunes' rate limits.
+
+const HARD_JUNK = /reaction|\b8d audio\b|slowed|sped up|nightcore|tutorial|karaoke|behind the scenes|full album|compilation|\b1 hour\b|\b1hr\b|greatest hits|best of|beatport|discograph/i;
+const SOFT_JUNK = /lyric|cover|remix|live at|acoustic|instrumental/i;
+const SHORTS_TAG = /#shorts?\b/i;
+
+function decodeHtml(s) {
+  if (!s) return '';
+  return s.replace(/&/g, '&').replace(/&#39;/g, "'").replace(/"/g, '"').replace(/</g, '<').replace(/>/g, '>');
+}
+
+function cleanTitle(title) {
+  if (!title) return '';
+  return decodeHtml(title)
+    .replace(/\(.*?(official|video|audio|lyric|lyrics|visualizer|visualiser|hd|4k|mv|music video|remaster|explicit|clean|performance|color coded|karaoke).*?\)/gi, '')
+    .replace(/\[.*?\]/g, '')
+    .replace(/\(.*?\)/g, '')
+    .replace(/\bfeat\.|\bft\./gi, '')
+    .replace(/official (music )?video/gi, '')
+    .replace(/official audio/gi, '')
+    .replace(/(lyric|lyrics)\s*(video)?/gi, '')
+    .replace(/\baudio\b/gi, '')
+    .replace(/\|.*$/, '')
+    .replace(/"/g, '')
+    .replace(/\s*-\s*topic\s*$/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function cleanArtist(artist) {
+  if (!artist) return '';
+  return decodeHtml(artist)
+    .replace(/\s*-\s*topic\s*$/i, '')
+    .replace(/\s*vevo$/i, '')
+    .replace(/\(.*?\)/g, '')
+    .replace(/\bofficial\b/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function normTitle(t) {
+  return (t || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function isoToSeconds(iso) {
+  if (!iso) return 0;
+  const m = iso.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
+  if (!m) return 0;
+  return (+(m[1] || 0)) * 3600 + (+(m[2] || 0)) * 60 + (+(m[3] || 0));
+}
+
+function isJunk(rawTitle, query, includeSoft) {
+  if (!rawTitle) return false;
+  if (SHORTS_TAG.test(rawTitle)) return true;
+  if (HARD_JUNK.test(rawTitle) && !HARD_JUNK.test(query || '')) return true;
+  if (includeSoft && SOFT_JUNK.test(rawTitle) && !SOFT_JUNK.test(query || '')) return true;
+  return false;
+}
+
+function isReasonableLength(durSeconds) {
+  return durSeconds >= 45 && durSeconds <= 600;
+}
+
+function buildTrack({ videoId, rawTitle, channelTitle, thumbnail, durationIso, views, idx }) {
+  return {
+    videoId,
+    title: cleanTitle(rawTitle),
+    artist: cleanArtist(channelTitle || ''),
+    thumbnail: thumbnail || '',
+    duration: durationIso || '',
+    _rawTitle: rawTitle || '',
+    _isTopic: /-\s*topic$/i.test(channelTitle || ''),
+    _views: views || 0,
+    _idx: idx == null ? 0 : idx,
+  };
+}
+
+function dedupeTracks(tracks) {
+  const byVid = new Set();
+  const groups = new Map();
+  for (const t of tracks) {
+    if (!t.videoId || byVid.has(t.videoId)) continue;
+    byVid.add(t.videoId);
+    const key = `${t.artist.toLowerCase()}|${normTitle(t.title)}`;
+    const cur = groups.get(key);
+    const score = (x) => (x._isTopic ? 1e12 : 0) + (x._views || 0);
+    if (!cur || score(t) > score(cur)) groups.set(key, t);
+  }
+  return Array.from(groups.values());
+}
+
+function stripInternal(t) {
+  const { _rawTitle, _isTopic, _views, _idx, ...rest } = t;
+  return rest;
+}
+
+// --- "real results" verification via Apple's free iTunes Search API ---
+// No key required. One call per search submit. If it fails or times out,
+// we degrade gracefully to the unverified (but already junk-filtered) list.
+async function fetchITunesVerifiedSet(query, ms = 2500) {
+  const verified = new Set(); // holds `${normArtist}|${normTitle}`
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), ms);
+    const url = `https://itunes.apple.com/search?media=music&entity=song&limit=15&term=${encodeURIComponent(query)}`;
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timer);
+    if (!res.ok) return verified;
+    const data = await res.json();
+    for (const r of data.results || []) {
+      const key = `${(r.artistName || '').toLowerCase().replace(/[^a-z0-9]/g, '')}|${normTitle(r.trackName)}`;
+      verified.add(key);
+    }
+  } catch {
+    // network hiccup or timeout — just skip verification, don't fail the search
+  }
+  return verified;
+}
+
+export default async function handler(req, res) {
+  // Works as a Vercel Node function (req/res). For Express/Railway, mount
+  // as: app.post('/api/searchMusic', (req, res) => handler(req, res))
+  try {
+    const body = req.body && typeof req.body === 'object' ? req.body : JSON.parse(req.body || '{}');
+    const query = (body.query || '').trim();
+    const mode = body.mode || 'search';
+    const pageToken = body.pageToken || '';
+    const maxResults = Math.min(Number(body.maxResults) || 24, 50);
+    const channelId = body.channelId || '';
+    const apiKey = process.env.YOUTUBE_API_KEY;
+    if (!apiKey) return res.status(500).json({ error: 'YouTube API key not configured' });
+
+    let url;
+    if (mode === 'trending') {
+      url = `https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails,statistics&chart=mostPopular&videoCategoryId=10&maxResults=${maxResults}&key=${apiKey}`;
+    } else if (mode === 'artists') {
+      if (!query) return res.status(200).json({ artists: [] });
+      url = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(query)}&maxResults=${maxResults}&key=${apiKey}`;
+    } else if (mode === 'artistSongs') {
+      if (!channelId) return res.status(200).json({ tracks: [], artist: null });
+      url = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&channelId=${channelId}&order=date&maxResults=${maxResults}&key=${apiKey}`;
+    } else {
+      if (!query) return res.status(200).json({ tracks: [], nextPageToken: '' });
+      url = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoCategoryId=10&q=${encodeURIComponent(query)}&maxResults=${maxResults}&key=${apiKey}`;
+    }
+    if (pageToken) url += `&pageToken=${pageToken}`;
+
+    const [ytRes, verifiedSet] = await Promise.all([
+      fetch(url),
+      mode === 'search' && query ? fetchITunesVerifiedSet(query) : Promise.resolve(new Set()),
+    ]);
+    const data = await ytRes.json();
+    if (!ytRes.ok) return res.status(ytRes.status).json({ error: data.error?.message || 'YouTube API error' });
+
+    if (mode === 'artists') {
+      const q = query.toLowerCase();
+      const raw = (data.items || []).map((it) => ({
+        channelId: it.id?.channelId || it.id,
+        title: decodeHtml(it.snippet?.title),
+        thumbnail: it.snippet?.thumbnails?.medium?.url || it.snippet?.thumbnails?.default?.url || '',
+      })).filter((a) => a.channelId);
+
+      const subs = {};
+      const ids = raw.map((a) => a.channelId).join(',');
+      if (ids) {
+        try {
+          const cres = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=statistics&id=${ids}&key=${apiKey}`);
+          const cdata = await cres.json();
+          (cdata.items || []).forEach((it) => { subs[it.id] = Number(it.statistics?.subscriberCount || 0); });
+        } catch {}
+      }
+
+      const seen = new Set();
+      const artists = raw
+        .map((a) => ({ ...a, subs: subs[a.channelId] || 0 }))
+        .filter((a) => {
+          const t = a.title.toLowerCase();
+          if (t.includes('topic') && a.subs < 100000) return false;
+          if (a.subs > 0 && a.subs < 1000) return false;
+          return true;
+        })
+        .filter((a) => {
+          const key = a.title.toLowerCase().trim();
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+
+      artists.sort((a, b) => {
+        const at = a.title.toLowerCase(), bt = b.title.toLowerCase();
+        const rank = (t) => (t === q ? 0 : t.startsWith(q) ? 1 : t.includes(q) ? 2 : 3);
+        const ra = rank(at), rb = rank(bt);
+        if (ra !== rb) return ra - rb;
+        return b.subs - a.subs;
+      });
+
+      return res.status(200).json({ artists: artists.map(({ subs, ...rest }) => rest) });
+    }
+
+    const includeSoft = mode !== 'artistSongs';
+    const strictDuration = mode !== 'artistSongs';
+    let tracks;
+
+    if (mode === 'trending') {
+      tracks = (data.items || []).map((it, i) => buildTrack({
+        videoId: it.id,
+        rawTitle: it.snippet?.title,
+        channelTitle: it.snippet?.channelTitle,
+        thumbnail: it.snippet?.thumbnails?.medium?.url || it.snippet?.thumbnails?.default?.url,
+        durationIso: it.contentDetails?.duration,
+        views: Number(it.statistics?.viewCount || 0),
+        idx: i,
+      }))
+        .filter((t) => !isJunk(t._rawTitle, '', includeSoft))
+        .filter((t) => !strictDuration || isReasonableLength(isoToSeconds(t.duration)));
+      tracks.sort((a, b) => b._views - a._views);
+      tracks = dedupeTracks(tracks);
+      tracks.sort((a, b) => b._views - a._views);
+    } else {
+      const ids = (data.items || []).map((it) => it.id?.videoId).filter(Boolean).join(',');
+      const durMap = {};
+      const viewsMap = {};
+      if (ids) {
+        const dres = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=contentDetails,statistics&id=${ids}&key=${apiKey}`);
+        const ddata = await dres.json();
+        (ddata.items || []).forEach((it) => {
+          durMap[it.id] = it.contentDetails?.duration || '';
+          viewsMap[it.id] = Number(it.statistics?.viewCount || 0);
+        });
+      }
+      tracks = (data.items || []).map((it, i) => buildTrack({
+        videoId: it.id?.videoId,
+        rawTitle: it.snippet?.title,
+        channelTitle: it.snippet?.channelTitle,
+        thumbnail: it.snippet?.thumbnails?.medium?.url || it.snippet?.thumbnails?.default?.url,
+        durationIso: durMap[it.id?.videoId] || '',
+        views: viewsMap[it.id?.videoId] || 0,
+        idx: i,
+      }))
+        .filter((t) => t.videoId)
+        .filter((t) => !isJunk(t._rawTitle, query, includeSoft))
+        .filter((t) => !strictDuration || isReasonableLength(isoToSeconds(t.duration)));
+
+      // Tag verified matches against the iTunes cross-check set, then sort:
+      // Topic-channel first (existing behavior), verified real songs next,
+      // everything else keeps original relevance order.
+      tracks = tracks.map((t) => {
+        const key = `${t.artist.toLowerCase().replace(/[^a-z0-9]/g, '')}|${normTitle(t.title)}`;
+        return { ...t, _verified: verifiedSet.has(key) };
+      });
+      tracks.sort((a, b) =>
+        (b._isTopic ? 1 : 0) - (a._isTopic ? 1 : 0) ||
+        (b._verified ? 1 : 0) - (a._verified ? 1 : 0) ||
+        a._idx - b._idx
+      );
+      tracks = dedupeTracks(tracks);
+    }
+
+    tracks = tracks.map((t) => ({ ...stripInternal(t), verified: !!t._verified }));
+
+    let artist = null;
+    if (mode === 'artistSongs') {
+      try {
+        const chres = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&id=${channelId}&key=${apiKey}`);
+        const chdata = await chres.json();
+        const ch = chdata.items?.[0];
+        if (ch) {
+          artist = {
+            title: decodeHtml(ch.snippet?.title),
+            thumbnail: ch.snippet?.thumbnails?.medium?.url || ch.snippet?.thumbnails?.default?.url || '',
+            subscribers: ch.statistics?.subscriberCount || 0,
+          };
+        }
+      } catch {}
+    }
+
+    return res.status(200).json({ tracks, artist, nextPageToken: data.nextPageToken || '' });
+  } catch (error) {
+    return res.status(500).json({ error: error.message });
+  }
+}

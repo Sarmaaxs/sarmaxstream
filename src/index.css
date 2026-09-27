@@ -1,0 +1,195 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap');
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 240 10% 3.5%;
+    --foreground: 0 0% 100%;
+    --card: 240 8% 6%;
+    --card-foreground: 0 0% 100%;
+    --popover: 240 8% 6%;
+    --popover-foreground: 0 0% 100%;
+    --primary: 72 100% 55%;
+    --primary-foreground: 240 10% 3.5%;
+    --secondary: 240 5% 12%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 5% 12%;
+    --muted-foreground: 240 5% 65%;
+    --accent: 270 100% 50%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 5% 14%;
+    --input: 240 5% 14%;
+    --ring: 72 100% 55%;
+    --chart-1: 72 100% 55%;
+    --chart-2: 270 100% 50%;
+    --chart-3: 197 37% 50%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+    --radius: 0.75rem;
+    --bottom-nav-h: 3.5rem;
+    --font-heading: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+    --font-body: 'Inter', ui-sans-serif, system-ui, sans-serif;
+    --font-display: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    --sidebar-background: 240 10% 3.5%;
+    --sidebar-foreground: 240 5% 65%;
+    --sidebar-primary: 72 100% 55%;
+    --sidebar-primary-foreground: 240 10% 3.5%;
+    --sidebar-accent: 240 5% 12%;
+    --sidebar-accent-foreground: 0 0% 98%;
+    --sidebar-border: 240 5% 14%;
+    --sidebar-ring: 72 100% 55%;
+  }
+
+  .dark {
+    --background: 240 10% 3.5%;
+    --foreground: 0 0% 100%;
+    --card: 240 8% 6%;
+    --card-foreground: 0 0% 100%;
+    --popover: 240 8% 6%;
+    --popover-foreground: 0 0% 100%;
+    --primary: 72 100% 55%;
+    --primary-foreground: 240 10% 3.5%;
+    --secondary: 240 5% 12%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 5% 12%;
+    --muted-foreground: 240 5% 65%;
+    --accent: 270 100% 50%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 5% 14%;
+    --input: 240 5% 14%;
+    --ring: 72 100% 55%;
+    --chart-1: 72 100% 55%;
+    --chart-2: 270 100% 50%;
+    --chart-3: 197 37% 50%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+    --sidebar-background: 240 10% 3.5%;
+    --sidebar-foreground: 240 5% 65%;
+    --sidebar-primary: 72 100% 55%;
+    --sidebar-primary-foreground: 240 10% 3.5%;
+    --sidebar-accent: 240 5% 12%;
+    --sidebar-accent-foreground: 0 0% 98%;
+    --sidebar-border: 240 5% 14%;
+    --sidebar-ring: 72 100% 55%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-background text-foreground font-body antialiased;
+  }
+
+  /* Native-app feel inside a WebView: chrome, controls and artwork shouldn't be
+     text-selectable. `user-select: auto` resolves to `none` under a `none`
+     ancestor, so these cover their children too. */
+  button,
+  [role="button"],
+  header,
+  nav,
+  img {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* ...but form fields must stay editable (WebKit can't type into an input
+     that inherits user-select: none). Declared after the rule above. */
+  input,
+  textarea,
+  [contenteditable="true"] {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+
+  button,
+  a,
+  [role="button"] {
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+@layer utilities {
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .glass {
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+  }
+  .glass-strong {
+    background: rgba(11, 13, 18, 0.72);
+    backdrop-filter: blur(26px) saturate(150%);
+    -webkit-backdrop-filter: blur(26px) saturate(150%);
+    border: 1px solid hsl(var(--border) / 0.8);
+  }
+  .glass-hover {
+    transition: background 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
+  }
+  .glass-hover:hover {
+    background: rgba(255, 255, 255, 0.07);
+    border-color: hsl(var(--primary) / 0.45);
+  }
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* Animated button primitives — see src/components/AnimatedButton.jsx */
+  .anim-btn {
+    position: relative;
+    transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease, background 0.2s ease;
+    transform: translateZ(0);
+  }
+  .anim-btn:hover { transform: translateY(-1px) scale(1.015); }
+  .anim-btn:active { transform: translateY(0) scale(0.96); transition-duration: 0.08s; }
+  .anim-btn-inner { display: inline-flex; align-items: center; gap: 0.5rem; }
+  .anim-btn-primary:hover {
+    box-shadow: 0 0 0 1px hsl(var(--primary) / 0.5), 0 8px 24px -8px hsl(var(--primary) / 0.55);
+  }
+  .anim-btn-icon { border-radius: 9999px; }
+  .anim-btn-icon:hover { box-shadow: 0 0 0 6px hsl(var(--primary) / 0.12); }
+  .anim-btn-icon:active { transform: scale(0.88); }
+  @media (prefers-reduced-motion: reduce) {
+    .anim-btn, .anim-btn:hover, .anim-btn:active { transition: none !important; transform: none !important; }
+  }
+
+  /* Safe-area offsets (notch / home indicator). They resolve to 0 wherever the
+     viewport has no insets, and rely on `viewport-fit=cover` in index.html. */
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  /* Top padding that clears the fixed 4rem navbar (+ its safe-area inset). */
+  .pt-nav {
+    padding-top: calc(6rem + env(safe-area-inset-top, 0px));
+  }
+  /* Bottom padding for page content; on mobile it also clears the fixed tab bar. */
+  .pb-page {
+    padding-bottom: 6rem;
+  }
+  @media (max-width: 767px) {
+    .pb-page {
+      padding-bottom: calc(var(--bottom-nav-h) + env(safe-area-inset-bottom, 0px) + 2rem);
+    }
+  }
+}
