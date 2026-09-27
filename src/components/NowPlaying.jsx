@@ -27,8 +27,8 @@ export default function NowPlaying() {
       try {
         const res = await fetch('/api/getLyrics', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ artist: t.artist, title: t.title }) }).then(r => r.json());
         if (active) {
-          setLyricLines(res.data?.lines || []);
-          setLyricPlain(res.data?.plain || '');
+          setLyricLines(res.lines || []);
+          setLyricPlain(res.plain || '');
         }
       } catch {
         if (active) setFailed(true);

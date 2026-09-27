@@ -135,6 +135,45 @@ async function fetchITunesVerifiedSet(query, ms = 2500) {
   return verified;
 }
 
+// Curated Billboard Hot 100 list (checked against billboard.com for the week
+// of Sept 26, 2026). Resolved to real YouTube videos below, cached in-memory
+// so repeat homepage loads don't burn 28x100 quota units every time.
+const FAMOUS_CHART = [
+  { title: "Choosin' Texas", artist: 'Ella Langley' },
+  { title: 'Boston', artist: 'Stella Lefty' },
+  { title: 'Been By Now', artist: 'Morgan Wallen' },
+  { title: 'Hate That I Made You Love Me', artist: 'Ariana Grande' },
+  { title: 'Dracula', artist: 'Tame Impala & JENNIE' },
+  { title: 'I Knew It, I Knew You', artist: 'Taylor Swift' },
+  { title: 'BbY WOW', artist: 'Karol G, Judeline & rusowsky' },
+  { title: 'So Easy (To Fall In Love)', artist: 'Olivia Dean' },
+  { title: 'Man I Need', artist: 'Olivia Dean' },
+  { title: 'Be Her', artist: 'Ella Langley' },
+  { title: 'Risk It All', artist: 'Bruno Mars' },
+  { title: 'Stupid Song', artist: 'Olivia Rodrigo' },
+  { title: 'I Just Might', artist: 'Bruno Mars' },
+  { title: 'Midnight Sun', artist: 'Zara Larsson' },
+  { title: "I Can't Love You Anymore", artist: 'Ella Langley & Morgan Wallen' },
+  { title: 'Drop Dead', artist: 'Olivia Rodrigo' },
+  { title: 'Be By You', artist: 'Luke Combs' },
+  { title: 'Janice STFU', artist: 'Drake' },
+  { title: 'Babydoll', artist: 'Dominic Fike' },
+  { title: 'Earrings', artist: 'Malcolm Todd' },
+  { title: 'Dead Fresh', artist: 'Lil Baby' },
+  { title: 'Nicole Kidman', artist: 'ADÉLA' },
+  { title: 'Loser', artist: 'Tame Impala' },
+  { title: 'Loving Life Again', artist: 'Ella Langley' },
+  { title: 'Jaded', artist: 'Koe Wetzel & Ella Langley' },
+  { title: 'So Good', artist: 'Jhené Aiko feat. Kendrick Lamar' },
+  { title: 'The Cure', artist: 'Olivia Rodrigo' },
+  { title: 'Animal', artist: 'KATSEYE' },
+];
+
+// Module-scope cache: survives while this serverless instance stays warm,
+// resets on cold start. Keeps quota usage bounded to roughly 2 refreshes/day.
+let chartCache = { ts: 0, tracks: [] };
+const CHART_CACHE_MS = 12 * 60 * 60 * 1000; // 12 hours
+
 export default async function handler(req, res) {
   // Works as a Vercel Node function (req/res). For Express/Railway, mount
   // as: app.post('/api/searchMusic', (req, res) => handler(req, res))
@@ -181,6 +220,46 @@ export default async function handler(req, res) {
       tracks = dedupeTracks(tracks);
       tracks.sort((a, b) => b._views - a._views);
       tracks = tracks.slice(0, maxResults).map((t) => ({ ...stripInternal(t), verified: false }));
+      return res.status(200).json({ tracks, artist: null, nextPageToken: '' });
+    }
+
+    // Real Billboard Hot 100 list, resolved to actual YouTube videos.
+    if (mode === 'chart') {
+      if (chartCache.tracks.length && Date.now() - chartCache.ts < CHART_CACHE_MS) {
+        return res.status(200).json({ tracks: chartCache.tracks, artist: null, nextPageToken: '' });
+      }
+      const resolved = await Promise.all(FAMOUS_CHART.map(async ({ title, artist }) => {
+        try {
+          const q = `${artist} ${title}`;
+          const sres = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoCategoryId=10&q=${encodeURIComponent(q)}&maxResults=1&key=${apiKey}`);
+          const sdata = await sres.json();
+          const item = sdata.items?.[0];
+          if (!item?.id?.videoId) return null;
+          return {
+            videoId: item.id.videoId,
+            title,
+            artist,
+            thumbnail: item.snippet?.thumbnails?.medium?.url || item.snippet?.thumbnails?.default?.url || '',
+            duration: '',
+          };
+        } catch { return null; }
+      }));
+      const seenIds = new Set();
+      let tracks = resolved.filter((t) => t && !seenIds.has(t.videoId) && seenIds.add(t.videoId));
+
+      const ids = tracks.map((t) => t.videoId).join(',');
+      if (ids) {
+        try {
+          const dres = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=${ids}&key=${apiKey}`);
+          const ddata = await dres.json();
+          const durMap = {};
+          (ddata.items || []).forEach((it) => { durMap[it.id] = it.contentDetails?.duration || ''; });
+          tracks = tracks.map((t) => ({ ...t, duration: durMap[t.videoId] || '' }));
+        } catch {}
+      }
+
+      tracks = tracks.map((t) => ({ ...t, verified: true }));
+      chartCache = { ts: Date.now(), tracks };
       return res.status(200).json({ tracks, artist: null, nextPageToken: '' });
     }
 

@@ -11,7 +11,7 @@ export default function Home() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch('/api/searchMusic', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'trending', maxResults: 50 }) }).then(r => r.json());
+        const res = await fetch('/api/searchMusic', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'chart' }) }).then(r => r.json());
         setTracks(res.tracks || []);
       } catch {}
       setLoading(false);
