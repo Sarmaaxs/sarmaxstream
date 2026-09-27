@@ -43,7 +43,7 @@ export default function PlayerBar() {
                 {p.isPlaying ? <Pause size={20} /> : <Play size={20} className="ml-0.5" />}
               </button>
               <button onClick={p.next} className="text-white/80 hover:text-white" aria-label="Next"><SkipForward size={20} /></button>
-              <button onClick={p.toggleRepeat} className={p.repeat ? 'text-primary' : 'text-white/60 hover:text-white"} aria-label="Repeat"><Repeat size={17} /></button>
+              <button onClick={p.toggleRepeat} className={p.repeat ? 'text-primary' : 'text-white/60 hover:text-white'} aria-label="Repeat"><Repeat size={17} /></button>
             </div>
             <div className="w-full flex items-center gap-2 text-[11px] text-white/50">
               <span className="w-9 text-right tabular-nums">{fmt(p.currentTime)}</span>
