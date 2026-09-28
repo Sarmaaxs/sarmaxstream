@@ -35,6 +35,7 @@ import Artist from '@/pages/Artist';
 import MusicSettings from '@/pages/Settings';
 import { SettingsProvider } from '@/lib/useSettings';
 import { PlayerProvider } from '@/lib/PlayerContext';
+import { Analytics } from "@vercel/analytics/react"
 
 const AuthenticatedApp = () => {
   const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
@@ -123,6 +124,7 @@ function App() {
           <AuthenticatedApp />
         </Router>
         <Toaster />
+        <Analytics />
       </QueryClientProvider>
     </AuthProvider>
   )
