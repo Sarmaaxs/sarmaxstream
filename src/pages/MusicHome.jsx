@@ -24,7 +24,7 @@ export default function Home() {
   }, []);
 
   const emptyText = /quota/i.test(error)
-    ? “We’re experiencing high traffic right now. Please try again in a few minutes.”
+    ? "We're experiencing high traffic right now. Please try again in a few minutes."
     : "Couldn't load tracks right now.";
 
   return (
