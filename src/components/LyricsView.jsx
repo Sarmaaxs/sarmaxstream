@@ -1,9 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { Loader2 } from 'lucide-react';
 
-// offset (seconds): positive = show lyrics EARLIER, negative = LATER.
-// Lets the user nudge lyrics when the YouTube video has a different intro
-// than the studio version the lyrics were timed against.
 export default function LyricsView({ lines, plain, currentTime, loading, failed, offset = 0 }) {
   const containerRef = useRef(null);
   const lineRefs = useRef([]);
@@ -18,11 +15,9 @@ export default function LyricsView({ lines, plain, currentTime, loading, failed,
     }
   }
 
-  // Scroll ONLY the lyrics box (scrollIntoView also scrolls the page/ancestors,
-  // which pushes the controls off-screen on phones).
   useEffect(() => {
     if (activeIdx < 0) return;
-    if (Date.now() < userScrollUntil.current) return; // user is reading ahead
+    if (Date.now() < userScrollUntil.current) return;
     const box = containerRef.current;
     const el = lineRefs.current[activeIdx];
     if (!box || !el) return;
@@ -51,7 +46,17 @@ export default function LyricsView({ lines, plain, currentTime, loading, failed,
             <p
               key={i}
               ref={(el) => (lineRefs.current[i] = el)}
-              className={`font-lyric transition-all duration-300 px-2 my-3 leading-snug ${active ? 'text-white text-2xl md:text-3xl font-semibold scale-[1.02]' : past ? 'text-white/35 text-lg' : 'text-white/35 text-lg'}`}
+              className={`
+                font-lyric px-2 my-3 leading-snug
+                transition-[transform,opacity,color] duration-300 ease-out
+                will-change-transform
+                ${active
+                  ? 'text-white text-2xl md:text-3xl font-semibold scale-105 opacity-100'
+                  : past
+                    ? 'text-white/35 text-lg scale-100 opacity-50'
+                    : 'text-white/35 text-lg scale-100 opacity-40'
+                }
+              `}
             >
               {l.text || '♪'}
             </p>
