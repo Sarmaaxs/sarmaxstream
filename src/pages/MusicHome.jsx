@@ -7,16 +7,25 @@ import { Loader2 } from 'lucide-react';
 export default function Home() {
   const [tracks, setTracks] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
 
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch('/api/searchMusic', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'chart' }) }).then(r => r.json());
+        // GET so Vercel's CDN can cache the chart (POST responses can't be cached).
+        const res = await fetch('/api/searchMusic?mode=chart').then(r => r.json());
         setTracks(res.tracks || []);
-      } catch {}
+        if (res.error) setError(res.error);
+      } catch {
+        setError('network');
+      }
       setLoading(false);
     })();
   }, []);
+
+  const emptyText = /quota/i.test(error)
+    ? "YouTube's daily limit was reached, so songs can't load right now. It resets at midnight Pacific time."
+    : "Couldn't load tracks right now.";
 
   return (
     <div className="space-y-8">
@@ -34,7 +43,7 @@ export default function Home() {
         {loading ? (
           <div className="flex justify-center py-12 text-white/40"><Loader2 className="animate-spin" /></div>
         ) : (
-          <TrackGrid tracks={tracks} emptyText="Couldn't load tracks right now." />
+          <TrackGrid tracks={tracks} emptyText={emptyText} />
         )}
       </section>
     </div>

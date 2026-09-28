@@ -25,11 +25,6 @@ export default function Footer() {
             </Link>
           ))}
         </nav>
-        <p className="text-xs leading-relaxed max-w-3xl">
-          sarmaxstream doesn&apos;t host any video files. Playback is provided by a third-party
-          player embedded in the page. Movie and TV information comes from TMDB. This product uses
-          the TMDB API but is not endorsed or certified by TMDB.
-        </p>
         <p className="text-xs">© {new Date().getFullYear()} sarmaxstream. All rights reserved.</p>
       </div>
     </footer>

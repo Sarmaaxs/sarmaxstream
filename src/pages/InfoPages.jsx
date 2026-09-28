@@ -106,7 +106,7 @@ export function Terms() {
           Those services are run by someone else. The player can show ads or pop-ups, set its own
           cookies, and be unavailable at times. We don&apos;t control it and aren&apos;t responsible
           for it. Never enter passwords or payment details on a pop-up, and be careful what you
-          click.
+          click. This product uses the TMDB API but is not endorsed or certified by TMDB.
         </p>
       </Section>
 

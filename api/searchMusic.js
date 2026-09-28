@@ -136,8 +136,7 @@ async function fetchITunesVerifiedSet(query, ms = 2500) {
 }
 
 // Curated Billboard Hot 100 list (checked against billboard.com for the week
-// of Sept 26, 2026). Resolved to real YouTube videos below, cached in-memory
-// so repeat homepage loads don't burn 28x100 quota units every time.
+// of Sept 26, 2026). Resolved to real YouTube videos below.
 const FAMOUS_CHART = [
   { title: "Choosin' Texas", artist: 'Ella Langley' },
   { title: 'Boston', artist: 'Stella Lefty' },
@@ -169,16 +168,22 @@ const FAMOUS_CHART = [
   { title: 'Animal', artist: 'KATSEYE' },
 ];
 
-// Module-scope cache: survives while this serverless instance stays warm,
-// resets on cold start. Keeps quota usage bounded to roughly 2 refreshes/day.
+// Two cache layers so the chart (28 x 100 = 2,800 quota units to resolve)
+// isn't re-resolved on every cold start / deploy-preview / page load:
+//  1) module-scope memory (per warm serverless instance), 24h
+//  2) Vercel's CDN via Cache-Control on GET /api/searchMusic?mode=chart, 3 days
 let chartCache = { ts: 0, tracks: [] };
-const CHART_CACHE_MS = 12 * 60 * 60 * 1000; // 12 hours
+const CHART_CACHE_MS = 24 * 60 * 60 * 1000;
+const CHART_CDN_HEADER = 'public, s-maxage=259200, stale-while-revalidate=86400';
 
 export default async function handler(req, res) {
   // Works as a Vercel Node function (req/res). For Express/Railway, mount
   // as: app.post('/api/searchMusic', (req, res) => handler(req, res))
   try {
-    const body = req.body && typeof req.body === 'object' ? req.body : JSON.parse(req.body || '{}');
+    // POST (JSON body) for everything, GET (?mode=chart) so the CDN can cache the chart.
+    const body = req.method === 'GET'
+      ? (req.query || {})
+      : (req.body && typeof req.body === 'object' ? req.body : JSON.parse(req.body || '{}'));
     const query = (body.query || '').trim();
     const mode = body.mode || 'search';
     const pageToken = body.pageToken || '';
@@ -226,13 +231,19 @@ export default async function handler(req, res) {
     // Real Billboard Hot 100 list, resolved to actual YouTube videos.
     if (mode === 'chart') {
       if (chartCache.tracks.length && Date.now() - chartCache.ts < CHART_CACHE_MS) {
+        res.setHeader('Cache-Control', CHART_CDN_HEADER);
         return res.status(200).json({ tracks: chartCache.tracks, artist: null, nextPageToken: '' });
       }
+      let firstError = '';
       const resolved = await Promise.all(FAMOUS_CHART.map(async ({ title, artist }) => {
         try {
           const q = `${artist} ${title}`;
           const sres = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoCategoryId=10&q=${encodeURIComponent(q)}&maxResults=1&key=${apiKey}`);
           const sdata = await sres.json();
+          if (!sres.ok) {
+            if (!firstError) firstError = sdata.error?.message || `YouTube API error ${sres.status}`;
+            return null;
+          }
           const item = sdata.items?.[0];
           if (!item?.id?.videoId) return null;
           return {
@@ -242,24 +253,37 @@ export default async function handler(req, res) {
             thumbnail: item.snippet?.thumbnails?.medium?.url || item.snippet?.thumbnails?.default?.url || '',
             duration: '',
           };
-        } catch { return null; }
+        } catch (e) {
+          if (!firstError) firstError = e.message || 'Request failed';
+          return null;
+        }
       }));
       const seenIds = new Set();
       let tracks = resolved.filter((t) => t && !seenIds.has(t.videoId) && seenIds.add(t.videoId));
 
-      const ids = tracks.map((t) => t.videoId).join(',');
-      if (ids) {
-        try {
-          const dres = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=${ids}&key=${apiKey}`);
-          const ddata = await dres.json();
-          const durMap = {};
-          (ddata.items || []).forEach((it) => { durMap[it.id] = it.contentDetails?.duration || ''; });
-          tracks = tracks.map((t) => ({ ...t, duration: durMap[t.videoId] || '' }));
-        } catch {}
+      if (tracks.length === 0) {
+        res.setHeader('Cache-Control', 'no-store');
+        return res.status(502).json({ error: firstError || 'No chart tracks found', tracks: [] });
       }
 
+      const ids = tracks.map((t) => t.videoId).join(',');
+      try {
+        const dres = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=${ids}&key=${apiKey}`);
+        const ddata = await dres.json();
+        const durMap = {};
+        (ddata.items || []).forEach((it) => { durMap[it.id] = it.contentDetails?.duration || ''; });
+        tracks = tracks.map((t) => ({ ...t, duration: durMap[t.videoId] || '' }));
+      } catch {}
+
       tracks = tracks.map((t) => ({ ...t, verified: true }));
-      chartCache = { ts: Date.now(), tracks };
+
+      // Only cache a (mostly) complete chart — never pin a half-failed one for days.
+      if (tracks.length >= Math.ceil(FAMOUS_CHART.length * 0.7)) {
+        chartCache = { ts: Date.now(), tracks };
+        res.setHeader('Cache-Control', CHART_CDN_HEADER);
+      } else {
+        res.setHeader('Cache-Control', 'no-store');
+      }
       return res.status(200).json({ tracks, artist: null, nextPageToken: '' });
     }
 
