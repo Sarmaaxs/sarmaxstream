@@ -24,7 +24,7 @@ export default function Home() {
   }, []);
 
   const emptyText = /quota/i.test(error)
-    ? "YouTube's daily limit was reached, so songs can't load right now. It resets at midnight Pacific time."
+    ? “We’re experiencing high traffic right now. Please try again in a few minutes.”
     : "Couldn't load tracks right now.";
 
   return (
