@@ -12,21 +12,13 @@ function fmt(sec) {
 
 export default function PlayerBar() {
   const p = usePlayer();
-  if (!p.current) {
-    return (
-      <div className="fixed bottom-0 left-0 right-0 z-50 glass-strong border-t border-white/10 px-4 py-3">
-        <div className="max-w-7xl mx-auto flex items-center justify-center">
-          <span className="eyebrow text-muted-foreground">sarmaxstream</span>
-        </div>
-      </div>
-    );
-  }
+  if (!p.current) return null;
 
   return (
     <>
-      <div className="fixed bottom-0 left-0 right-0 z-50 glass-strong border-t border-white/10 px-3 py-2.5 md:px-4">
+      <div className="player-bar-pos fixed left-0 right-0 z-40 glass-strong border-t border-white/10 px-3 py-2 md:px-4 md:pb-2.5">
         <div className="max-w-7xl mx-auto flex items-center gap-3">
-          <button onClick={p.openNowPlaying} className="flex items-center gap-3 min-w-0 w-[42%] md:w-[28%] text-left group">
+          <button onClick={p.openNowPlaying} className="flex items-center gap-3 min-w-0 w-[46%] md:w-[28%] text-left group">
             <img src={p.current.thumbnail} alt="" className="w-12 h-12 rounded-lg object-cover shadow-lg shrink-0" />
             <div className="min-w-0">
               <div className="truncate text-sm font-medium">{p.current.title}</div>
@@ -37,13 +29,13 @@ export default function PlayerBar() {
 
           <div className="flex-1 flex flex-col items-center gap-1 min-w-0">
             <div className="flex items-center gap-3 md:gap-5">
-              <button onClick={p.toggleShuffle} className={p.shuffle ? 'text-primary' : 'text-white/60 hover:text-white'} aria-label="Shuffle"><Shuffle size={17} /></button>
-              <button onClick={p.prev} className="text-white/80 hover:text-white" aria-label="Previous"><SkipBack size={20} /></button>
+              <button onClick={p.toggleShuffle} className={`hidden sm:block ${p.shuffle ? 'text-primary' : 'text-white/60 hover:text-white'}`} aria-label="Shuffle"><Shuffle size={17} /></button>
+              <button onClick={p.prev} className="p-1.5 text-white/80 hover:text-white" aria-label="Previous"><SkipBack size={20} /></button>
               <button onClick={p.togglePlay} className="bg-primary text-primary-foreground rounded-full p-2.5 shadow-lg hover:scale-105 transition" aria-label="Play/Pause">
                 {p.isPlaying ? <Pause size={20} /> : <Play size={20} className="ml-0.5" />}
               </button>
-              <button onClick={p.next} className="text-white/80 hover:text-white" aria-label="Next"><SkipForward size={20} /></button>
-              <button onClick={p.toggleRepeat} className={p.repeat ? 'text-primary' : 'text-white/60 hover:text-white'} aria-label="Repeat"><Repeat size={17} /></button>
+              <button onClick={p.next} className="p-1.5 text-white/80 hover:text-white" aria-label="Next"><SkipForward size={20} /></button>
+              <button onClick={p.toggleRepeat} className={`hidden sm:block ${p.repeat ? 'text-primary' : 'text-white/60 hover:text-white'}`} aria-label="Repeat"><Repeat size={17} /></button>
             </div>
             <div className="w-full flex items-center gap-2 text-[11px] text-white/50">
               <span className="w-9 text-right tabular-nums">{fmt(p.currentTime)}</span>

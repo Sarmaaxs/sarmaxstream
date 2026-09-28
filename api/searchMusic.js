@@ -135,6 +135,32 @@ async function fetchITunesVerifiedSet(query, ms = 2500) {
   return verified;
 }
 
+// Real-artist check: Apple's free iTunes API lists actual recording artists.
+// YouTube "channel" search returns fan pages, re-uploaders and fake accounts,
+// so we only keep channels whose name matches a real artist.
+function normName(n) {
+  return (n || '').toLowerCase()
+    .replace(/\s*-\s*topic\s*$/i, '')
+    .replace(/\s*vevo\s*$/i, '')
+    .replace(/\bofficial\b/g, '')
+    .replace(/[^a-z0-9]/g, '');
+}
+
+async function fetchITunesArtistSet(query, ms = 2500) {
+  const names = new Set();
+  try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), ms);
+    const url = `https://itunes.apple.com/search?media=music&entity=musicArtist&limit=15&term=${encodeURIComponent(query)}`;
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timer);
+    if (!res.ok) return names;
+    const data = await res.json();
+    for (const r of data.results || []) names.add(normName(r.artistName));
+  } catch {}
+  return names;
+}
+
 // Curated Billboard Hot 100 list (checked against billboard.com for the week
 // of Sept 26, 2026). Resolved to real YouTube videos below.
 const FAMOUS_CHART = [
@@ -304,6 +330,7 @@ export default async function handler(req, res) {
       fetch(url),
       mode === 'search' && query ? fetchITunesVerifiedSet(query) : Promise.resolve(new Set()),
     ]);
+    const artistSetPromise = mode === 'artists' && query ? fetchITunesArtistSet(query) : Promise.resolve(new Set());
     const data = await ytRes.json();
     if (!ytRes.ok) return res.status(ytRes.status).json({ error: data.error?.message || 'YouTube API error' });
 
@@ -325,17 +352,23 @@ export default async function handler(req, res) {
         } catch {}
       }
 
+      const realNames = await artistSetPromise;
       const seen = new Set();
       const artists = raw
         .map((a) => ({ ...a, subs: subs[a.channelId] || 0 }))
         .filter((a) => {
           const t = a.title.toLowerCase();
-          if (t.includes('topic') && a.subs < 100000) return false;
-          if (a.subs > 0 && a.subs < 1000) return false;
-          return true;
+          const isTopic = t.includes('- topic');
+          // Real artist = name matches an actual recording artist (iTunes),
+          // or the channel is huge. If iTunes was unreachable, fall back to a size check.
+          if (realNames.size > 0) {
+            return realNames.has(normName(a.title)) || a.subs >= 2000000;
+          }
+          if (isTopic) return a.subs >= 100000;
+          return a.subs >= 100000;
         })
         .filter((a) => {
-          const key = a.title.toLowerCase().trim();
+          const key = normName(a.title);
           if (seen.has(key)) return false;
           seen.add(key);
           return true;
@@ -394,6 +427,15 @@ export default async function handler(req, res) {
         a._idx - b._idx
       );
       tracks = dedupeTracks(tracks);
+
+      // Songs, not random uploads: if we have enough real songs, hide unverified
+      // uploads from tiny channels/low view counts.
+      if (mode === 'search') {
+        const good = tracks.filter((t) => t._verified || t._isTopic);
+        if (good.length >= 5) {
+          tracks = tracks.filter((t) => t._verified || t._isTopic || (t._views || 0) >= 500000);
+        }
+      }
     }
 
     tracks = tracks.map((t) => ({ ...stripInternal(t), verified: !!t._verified }));

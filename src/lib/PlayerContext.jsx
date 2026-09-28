@@ -3,34 +3,53 @@ import { useSettings } from '@/lib/useSettings';
 
 const PlayerContext = createContext(null);
 
+const STATE_KEY = 'sarmax_player_v1';
+
+function loadSaved() {
+  try {
+    const raw = localStorage.getItem(STATE_KEY);
+    if (!raw) return {};
+    const d = JSON.parse(raw);
+    return d && typeof d === 'object' ? d : {};
+  } catch { return {}; }
+}
+
 const QUALITY_MAP = { auto: 'auto', low: 'small', normal: 'medium', high: 'hd720' };
 
 export function PlayerProvider({ children }) {
   const { autoplay, crossfade, gapless, quality, playbackSpeed, normalization, sleepTimer } = useSettings();
-  const [current, setCurrent] = useState(null);
-  const [queue, setQueue] = useState([]);
-  const [index, setIndex] = useState(-1);
+  const savedRef = useRef(null);
+  if (savedRef.current === null) savedRef.current = loadSaved();
+  const sv = savedRef.current;
+  const [current, setCurrent] = useState(sv.current && sv.current.videoId ? sv.current : null);
+  const [queue, setQueue] = useState(Array.isArray(sv.queue) ? sv.queue : []);
+  const [index, setIndex] = useState(typeof sv.index === 'number' ? sv.index : -1);
   const [isPlaying, setIsPlaying] = useState(false);
   const [isReady, setIsReady] = useState(false);
-  const [currentTime, setCurrentTime] = useState(0);
+  const [currentTime, setCurrentTime] = useState(sv.current && sv.time ? sv.time : 0);
   const [duration, setDuration] = useState(0);
-  const [volume, setVolume] = useState(80);
+  const [volume, setVolume] = useState(typeof sv.volume === 'number' ? sv.volume : 80);
   const [muted, setMuted] = useState(false);
-  const [repeat, setRepeat] = useState(false);
-  const [shuffle, setShuffle] = useState(false);
+  const [repeat, setRepeat] = useState(!!sv.repeat);
+  const [shuffle, setShuffle] = useState(!!sv.shuffle);
   const [nowPlayingOpen, setNowPlayingOpen] = useState(false);
   const [recent, setRecent] = useState(() => { try { return JSON.parse(localStorage.getItem('sarmax_recent') || '[]'); } catch { return []; } });
 
   const playerRef = useRef(null);
-  const queueRef = useRef([]);
-  const indexRef = useRef(-1);
-  const repeatRef = useRef(false);
-  const shuffleRef = useRef(false);
+  const queueRef = useRef(Array.isArray(sv.queue) ? sv.queue : []);
+  const indexRef = useRef(typeof sv.index === 'number' ? sv.index : -1);
+  const repeatRef = useRef(!!sv.repeat);
+  const shuffleRef = useRef(!!sv.shuffle);
+  const errCountRef = useRef(0);
+  const loadedRef = useRef(false); // true once the user (or a link) chose a track this visit
+  const restoreRef = useRef(sv.current && sv.current.videoId ? { videoId: sv.current.videoId, time: sv.time || 0 } : null);
+  const currentRef = useRef(sv.current && sv.current.videoId ? sv.current : null);
+  const timeRef = useRef(sv.time || 0);
   const autoplayRef = useRef(autoplay);
   const crossfadeRef = useRef(crossfade);
   const gaplessRef = useRef(gapless);
   const qualityRef = useRef(quality);
-  const volumeRef = useRef(volume);
+  const volumeRef = useRef(typeof sv.volume === 'number' ? sv.volume : 80);
   const speedRef = useRef(playbackSpeed);
   const normRef = useRef(normalization);
   const sleepRef = useRef(sleepTimer);
@@ -46,7 +65,32 @@ export function PlayerProvider({ children }) {
   useEffect(() => { volumeRef.current = volume; }, [volume]);
   useEffect(() => { normRef.current = normalization; }, [normalization]);
   useEffect(() => { sleepRef.current = sleepTimer; }, [sleepTimer]);
-  useEffect(() => { localStorage.setItem('sarmax_recent', JSON.stringify(recent)); }, [recent]);
+  useEffect(() => { try { localStorage.setItem('sarmax_recent', JSON.stringify(recent)); } catch {} }, [recent]);
+
+  // Remember what was playing so it's still there when the user comes back.
+  const persist = useCallback(() => {
+    try {
+      const cur = currentRef.current;
+      localStorage.setItem(STATE_KEY, JSON.stringify({
+        current: cur ? { videoId: cur.videoId, title: cur.title, artist: cur.artist, thumbnail: cur.thumbnail, duration: cur.duration || '' } : null,
+        queue: (queueRef.current || []).slice(0, 60).map((t) => ({ videoId: t.videoId, title: t.title, artist: t.artist, thumbnail: t.thumbnail, duration: t.duration || '' })),
+        index: indexRef.current,
+        time: timeRef.current || 0,
+        volume: volumeRef.current,
+        repeat: repeatRef.current,
+        shuffle: shuffleRef.current,
+      }));
+    } catch {}
+  }, []);
+  useEffect(() => { currentRef.current = current; persist(); }, [current, queue, index, volume, repeat, shuffle, persist]);
+  useEffect(() => { timeRef.current = currentTime; }, [currentTime]);
+  useEffect(() => {
+    const id = setInterval(persist, 5000);
+    const onHide = () => persist();
+    window.addEventListener('pagehide', onHide);
+    document.addEventListener('visibilitychange', onHide);
+    return () => { clearInterval(id); window.removeEventListener('pagehide', onHide); document.removeEventListener('visibilitychange', onHide); };
+  }, [persist]);
 
   const applySpeed = useCallback(() => {
     if (playerRef.current && playerRef.current.setPlaybackRate) {
@@ -72,6 +116,13 @@ export function PlayerProvider({ children }) {
     const q = queueRef.current;
     if (i < 0 || i >= q.length) return;
     const track = q[i];
+    loadedRef.current = true;
+    restoreRef.current = null;
+    errCountRef.current = 0;
+    timeRef.current = 0;
+    currentRef.current = track;
+    setCurrentTime(0);
+    setDuration(0);
     setIndex(i);
     setCurrent(track);
     setRecent((r) => {
@@ -118,11 +169,16 @@ export function PlayerProvider({ children }) {
           onReady: (e) => {
             setIsReady(true);
             try { e.target.setVolume(volumeRef.current); applyQuality(); applySpeed(); } catch {}
+            const r = restoreRef.current;
+            if (r && !loadedRef.current) {
+              try { e.target.cueVideoById({ videoId: r.videoId, startSeconds: r.time || 0 }); } catch {}
+            }
           },
           onStateChange: (e) => {
             const YTS = window.YT.PlayerState;
             if (e.data === YTS.PLAYING) {
               setIsPlaying(true);
+              errCountRef.current = 0;
               restoreVolume();
               applyQuality();
             } else if (e.data === YTS.PAUSED) {
@@ -138,7 +194,12 @@ export function PlayerProvider({ children }) {
               }
             }
           },
-          onError: () => { next(); }
+          onError: () => {
+            // Some videos can't be embedded. Skip a few, but never loop through the whole queue.
+            errCountRef.current += 1;
+            if (errCountRef.current <= 3 && queueRef.current.length > 1) next();
+            else setIsPlaying(false);
+          }
         }
       });
     }
@@ -169,7 +230,7 @@ export function PlayerProvider({ children }) {
           }
         } catch {}
       }
-    }, 500);
+    }, 250);
     return () => clearInterval(t);
   }, [next, applyQuality, restoreVolume, muted]);
 
@@ -182,13 +243,30 @@ export function PlayerProvider({ children }) {
     playAt(idx);
   }, [playAt]);
 
+  // Load a track WITHOUT autoplaying (phones block autoplay without a tap).
+  const cueTrack = useCallback((track) => {
+    loadedRef.current = true;
+    restoreRef.current = null;
+    setQueue([track]);
+    queueRef.current = [track];
+    setIndex(0);
+    setCurrent(track);
+    currentRef.current = track;
+    setCurrentTime(0);
+    setDuration(0);
+    setIsPlaying(false);
+    try { playerRef.current?.cueVideoById(track.videoId); } catch {}
+  }, []);
+
   const togglePlay = useCallback(() => {
     if (!playerRef.current) return;
     try {
-      if (isPlaying) playerRef.current.pauseVideo();
+      const st = playerRef.current.getPlayerState ? playerRef.current.getPlayerState() : null;
+      const playingNow = st === 1 || st === 3; // playing or buffering
+      if (playingNow) playerRef.current.pauseVideo();
       else playerRef.current.playVideo();
     } catch {}
-  }, [isPlaying]);
+  }, []);
 
   const seek = useCallback((sec) => {
     if (playerRef.current && playerRef.current.seekTo) {
@@ -248,12 +326,12 @@ export function PlayerProvider({ children }) {
   const value = {
     current, isPlaying, isReady, currentTime, duration, volume, muted, repeat, shuffle, queue, index,
     nowPlayingOpen, openNowPlaying, closeNowPlaying, recent,
-    playTrack, togglePlay, next, prev, seek, setVolume: setVol, toggleMute, toggleRepeat, toggleShuffle
+    playTrack, cueTrack, togglePlay, next, prev, seek, setVolume: setVol, toggleMute, toggleRepeat, toggleShuffle
   };
 
   return (
     <PlayerContext.Provider value={value}>
-      <div className="sr-only overflow-hidden" aria-hidden="true">
+      <div aria-hidden="true" style={{ position: 'fixed', bottom: 0, right: 0, width: 2, height: 2, overflow: 'hidden', opacity: 0.01, pointerEvents: 'none', zIndex: -1 }}>
         <div id="yt-hidden-player" />
       </div>
       {children}

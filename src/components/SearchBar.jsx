@@ -52,7 +52,7 @@ export default function SearchBar({ initial = '' }) {
           value={q}
           onChange={(e) => setQ(e.target.value)}
           onFocus={() => results.length && setOpen(true)}
-          placeholder="Search any song, artist, or album…"
+          placeholder="Search songs…"
           className="w-full glass rounded-full pl-12 pr-10 py-3 text-sm text-white placeholder:text-white/40 outline-none focus:border-primary/60 border border-white/10"
         />
         {q && (
@@ -76,7 +76,7 @@ export default function SearchBar({ initial = '' }) {
             </button>
           ))}
           <button onClick={submit} className="w-full text-left px-3 py-2.5 mt-1 rounded-xl hover:bg-white/10 text-sm text-primary">
-            See artists for “{q}” →
+            See all results for “{q}” →
           </button>
         </div>
       )}

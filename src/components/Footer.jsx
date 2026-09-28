@@ -17,7 +17,7 @@ export default function Footer() {
 
   return (
     <footer className="border-t border-border/60 mt-12">
-      <div className="mx-auto max-w-[1600px] px-4 sm:px-6 lg:px-10 pt-8 pb-24 md:pb-10 space-y-4 text-muted-foreground">
+      <div className="mx-auto max-w-[1600px] px-4 sm:px-6 lg:px-10 pt-8 pb-24 md:pb-28 space-y-4 text-muted-foreground">
         <nav aria-label="Footer" className="flex flex-wrap gap-x-6 gap-y-2 text-sm">
           {LINKS.map((l) => (
             <Link key={l.to} to={l.to} className="hover:text-foreground transition-colors">

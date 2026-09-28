@@ -192,4 +192,20 @@
       padding-bottom: calc(var(--bottom-nav-h) + env(safe-area-inset-bottom, 0px) + 2rem);
     }
   }
+  /* When the mini player is showing, leave room for it too (it sits above the tab bar on phones). */
+  .pb-player {
+    padding-bottom: 8rem;
+  }
+  @media (max-width: 767px) {
+    .pb-player {
+      padding-bottom: calc(var(--bottom-nav-h) + env(safe-area-inset-bottom, 0px) + 6rem);
+    }
+  }
+  /* Mini player: above the tab bar on phones, flush to the bottom on desktop. */
+  .player-bar-pos {
+    bottom: calc(var(--bottom-nav-h) + env(safe-area-inset-bottom, 0px));
+  }
+  @media (min-width: 768px) {
+    .player-bar-pos { bottom: 0; }
+  }
 }
