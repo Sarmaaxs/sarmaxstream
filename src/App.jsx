@@ -13,6 +13,8 @@ import Home from '@/pages/Home';
 import SearchPage from '@/pages/Search';
 import TitleDetail from '@/pages/TitleDetail';
 import AnimePage from '@/pages/Anime';
+import Books from '@/pages/Books';
+import BookReader from '@/pages/BookReader';
 import AnimeDetail from '@/pages/AnimeDetail';
 import AnimeResolve from '@/pages/AnimeResolve';
 import WatchlistPage from '@/pages/Watchlist';
@@ -68,6 +70,8 @@ const AuthenticatedApp = () => {
       <Route path="/" element={<Home />} />
       <Route path="/search" element={<SearchPage />} />
       <Route path="/anime" element={<AnimePage />} />
+      <Route path="/books" element={<Books />} />
+      <Route path="/books/read/:id" element={<BookReader />} />
       <Route path="/title/anime/:id" element={<AnimeDetail />} />
       <Route path="/title/anime-tv/:id" element={<AnimeResolve kind="tv" />} />
       <Route path="/title/anime-movie/:id" element={<AnimeResolve kind="movie" />} />

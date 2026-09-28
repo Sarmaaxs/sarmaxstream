@@ -1,11 +1,12 @@
 import React from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Home, Search, Bookmark, Music4 } from "lucide-react";
+import { Home, Search, Bookmark, Music4, BookOpen } from "lucide-react";
 
 const TABS = [
   { label: "Home", to: "/", icon: Home, match: (p) => p === "/" },
   { label: "Search", to: "/search", icon: Search, match: (p) => p.startsWith("/search") },
   { label: "Music", to: "/music", icon: Music4, match: (p) => p.startsWith("/music") },
+  { label: "Books", to: "/books", icon: BookOpen, match: (p) => p.startsWith("/books") },
   { label: "My List", to: "/watchlist", icon: Bookmark, match: (p) => p.startsWith("/watchlist") },
 ];
 

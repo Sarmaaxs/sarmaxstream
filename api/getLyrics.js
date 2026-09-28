@@ -5,6 +5,8 @@
 // lyrics.ovh) and returning whatever they send back to your own frontend.
 // No env vars needed; neither API requires a key.
 
+import { rateLimit } from './_guard.js';
+
 function cleanTitle(title) {
   return (title || '')
     .replace(/\(.*?(official|video|audio|lyric|lyrics|visualizer|visualiser|hd|4k|mv|music video|remaster|explicit|clean|performance).*?\)/gi, '')
@@ -133,10 +135,11 @@ async function tryOvh(artist, title, ms) {
 }
 
 export default async function handler(req, res) {
+  if (!rateLimit(req, res, { name: 'lyrics', max: 30, windowMs: 60 * 1000 })) return undefined;
   try {
     const body = req.body && typeof req.body === 'object' ? req.body : JSON.parse(req.body || '{}');
-    let artist = (body.artist || '').toString().trim();
-    let title = (body.title || '').toString().trim();
+    let artist = (body.artist || '').toString().trim().slice(0, 200);
+    let title = (body.title || '').toString().trim().slice(0, 200);
     const duration = Number(body.duration) > 0 ? Number(body.duration) : 0;
     if (!title) return res.status(200).json({ lines: [], plain: '' });
 

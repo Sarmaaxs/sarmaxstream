@@ -18,6 +18,8 @@
 //     keystroke) — one extra network call, not per-result, so it stays fast
 //     and won't hit iTunes' rate limits.
 
+import { rateLimit, makeCache, parseBody } from './_guard.js';
+
 const HARD_JUNK = /reaction|\b8d audio\b|slowed|sped up|nightcore|tutorial|karaoke|behind the scenes|full album|compilation|\b1 hour\b|\b1hr\b|greatest hits|best of|beatport|discograph/i;
 const SOFT_JUNK = /lyric|cover|remix|live at|acoustic|instrumental/i;
 const SHORTS_TAG = /#shorts?\b/i;
@@ -202,7 +204,7 @@ let chartCache = { ts: 0, tracks: [] };
 const CHART_CACHE_MS = 24 * 60 * 60 * 1000;
 const CHART_CDN_HEADER = 'public, s-maxage=259200, stale-while-revalidate=86400';
 
-export default async function handler(req, res) {
+async function inner(req, res) {
   // Works as a Vercel Node function (req/res). For Express/Railway, mount
   // as: app.post('/api/searchMusic', (req, res) => handler(req, res))
   try {
@@ -319,12 +321,12 @@ export default async function handler(req, res) {
       url = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=channel&q=${encodeURIComponent(query)}&maxResults=${maxResults}&key=${apiKey}`;
     } else if (mode === 'artistSongs') {
       if (!channelId) return res.status(200).json({ tracks: [], artist: null });
-      url = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&channelId=${channelId}&order=date&maxResults=${maxResults}&key=${apiKey}`;
+      url = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&channelId=${encodeURIComponent(channelId)}&order=date&maxResults=${maxResults}&key=${apiKey}`;
     } else {
       if (!query) return res.status(200).json({ tracks: [], nextPageToken: '' });
       url = `https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoCategoryId=10&q=${encodeURIComponent(query)}&maxResults=${maxResults}&key=${apiKey}`;
     }
-    if (pageToken) url += `&pageToken=${pageToken}`;
+    if (pageToken) url += `&pageToken=${encodeURIComponent(pageToken)}`;
 
     const [ytRes, verifiedSet] = await Promise.all([
       fetch(url),
@@ -443,7 +445,7 @@ export default async function handler(req, res) {
     let artist = null;
     if (mode === 'artistSongs') {
       try {
-        const chres = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&id=${channelId}&key=${apiKey}`);
+        const chres = await fetch(`https://www.googleapis.com/youtube/v3/channels?part=snippet,statistics&id=${encodeURIComponent(channelId)}&key=${apiKey}`);
         const chdata = await chres.json();
         const ch = chdata.items?.[0];
         if (ch) {
@@ -460,4 +462,50 @@ export default async function handler(req, res) {
   } catch (error) {
     return res.status(500).json({ error: error.message });
   }
+}
+
+
+// ---------------------------------------------------------------------------
+// Public handler: input validation, result cache, per-IP rate limit.
+// Cache hits cost no YouTube quota and don't count toward the rate limit.
+// ---------------------------------------------------------------------------
+const resultCache = makeCache({ ttlMs: 10 * 60 * 1000, max: 400 });
+const CACHEABLE = new Set(['search', 'artists', 'artistSongs', 'trending']);
+
+export default async function handler(req, res) {
+  const body = parseBody(req);
+  const mode = body.mode || 'search';
+  const query = String(body.query || '').trim();
+  const channelId = String(body.channelId || '');
+  const pageToken = String(body.pageToken || '');
+
+  if (query.length > 100) return res.status(400).json({ error: 'Query too long', tracks: [], artists: [] });
+  if (channelId && !/^UC[\w-]{20,30}$/.test(channelId)) return res.status(400).json({ error: 'Bad channel id', tracks: [], artists: [] });
+  if (pageToken && !/^[\w-]{1,200}$/.test(pageToken)) return res.status(400).json({ error: 'Bad page token', tracks: [], artists: [] });
+
+  if (!CACHEABLE.has(mode)) {
+    // 'chart' has its own long cache and is cheap; everything else falls through.
+    return inner(req, res);
+  }
+
+  const key = JSON.stringify([mode, query.toLowerCase(), channelId, pageToken, Number(body.maxResults) || 24]);
+  const hit = resultCache.get(key);
+  if (hit) {
+    res.setHeader('X-Cache', 'HIT');
+    return res.status(200).json(hit);
+  }
+
+  if (!rateLimit(req, res, { name: 'music', max: 40, windowMs: 60 * 1000 })) return undefined;
+
+  let code = 200;
+  const origStatus = res.status.bind(res);
+  const origJson = res.json.bind(res);
+  res.status = (c) => { code = c; return origStatus(c); };
+  res.json = (payload) => {
+    // Only cache real, non-empty successes (never cache quota errors or empty results).
+    const nonEmpty = payload && ((payload.tracks && payload.tracks.length) || (payload.artists && payload.artists.length));
+    if (code === 200 && nonEmpty) resultCache.set(key, payload);
+    return origJson(payload);
+  };
+  return inner(req, res);
 }
