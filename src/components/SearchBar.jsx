@@ -39,7 +39,7 @@ export default function SearchBar({ initial = '' }) {
   const submit = (e) => {
     e.preventDefault();
     const v = q.trim();
-    if (v) { setOpen(false); navigate(`/search?q=${encodeURIComponent(v)}`); }
+    if (v) { setOpen(false); navigate(`/music/search?q=${encodeURIComponent(v)}`); }
   };
 
   const pick = (t) => { player.playTrack(t, results); setOpen(false); };

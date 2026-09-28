@@ -23,7 +23,7 @@ export default function PlaylistView() {
 
   return (
     <div className="space-y-6">
-      <Link to="/library" className="inline-flex items-center gap-1 text-sm text-white/60 hover:text-white"><ArrowLeft size={16} /> Back to Library</Link>
+      <Link to="/music/library" className="inline-flex items-center gap-1 text-sm text-white/60 hover:text-white"><ArrowLeft size={16} /> Back to Library</Link>
       <div className="flex items-end gap-4">
         <div className="w-24 h-24 rounded-2xl bg-primary/15 flex items-center justify-center text-primary text-4xl font-bold">{playlist.name.charAt(0).toUpperCase()}</div>
         <div className="flex-1">

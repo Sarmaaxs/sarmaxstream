@@ -3,6 +3,7 @@ import { Link, useLocation } from "react-router-dom";
 import { Bookmark, LogIn, UserRound } from "lucide-react";
 import { supabase } from "@/api/supabaseClient";
 import SearchBox from "@/components/SearchBox";
+import SearchBar from "@/components/SearchBar";
 
 export default function Navbar() {
   const location = useLocation();
@@ -19,6 +20,11 @@ export default function Navbar() {
   useEffect(() => {
     supabase.auth.getSession().then(({ data }) => setAuthed(!!data.session));
   }, [location.pathname]);
+
+  // On /music pages the navbar search must search MUSIC, not movies.
+  // (/music and /music/search already show their own music search bar.)
+  const isMusic = location.pathname.startsWith("/music");
+  const pageHasOwnSearch = location.pathname === "/music" || location.pathname === "/music/" || location.pathname === "/music/search";
 
   const links = [
   { label: "Home", to: "/" },
@@ -52,7 +58,7 @@ export default function Navbar() {
         </nav>
 
         <div className="hidden sm:block flex-1 max-w-md ml-auto">
-          <SearchBox size="nav" />
+          {isMusic ? (pageHasOwnSearch ? null : <SearchBar />) : <SearchBox size="nav" />}
         </div>
 
         <div className="flex items-center gap-2 ml-auto sm:ml-2">

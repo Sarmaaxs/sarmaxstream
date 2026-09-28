@@ -43,7 +43,7 @@ export default function Library() {
           ) : (
             <div className="grid sm:grid-cols-2 lg:grid-cols-3 gap-4">
               {lib.playlists.map((pl) => (
-                <Link to={`/playlist/${pl.id}`} key={pl.id} className="glass glass-hover rounded-2xl p-4 flex items-center gap-3">
+                <Link to={`/music/playlist/${pl.id}`} key={pl.id} className="glass glass-hover rounded-2xl p-4 flex items-center gap-3">
                   <div className="w-14 h-14 rounded-xl bg-primary/15 flex items-center justify-center text-primary"><ListMusic size={24} /></div>
                   <div className="min-w-0 flex-1">
                     <div className="font-medium truncate">{pl.name}</div>

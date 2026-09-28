@@ -14,6 +14,7 @@ const HIDDEN_ON = ["/login", "/register", "/forgot-password", "/reset-password"]
 export default function MobileBottomNav() {
   const { pathname } = useLocation();
   if (HIDDEN_ON.includes(pathname)) return null;
+  const inMusic = pathname.startsWith("/music");
 
   return (
     <nav
@@ -21,8 +22,10 @@ export default function MobileBottomNav() {
       className="md:hidden fixed bottom-0 left-0 right-0 z-50 border-t border-border/60 bg-background/90 backdrop-blur-xl pb-safe"
     >
       <ul className="flex items-stretch justify-around h-14">
-        {TABS.map(({ label, to, icon: Icon, match }) => {
-          const active = match(pathname);
+        {TABS.map(({ label, to: baseTo, icon: Icon, match }) => {
+          // Inside the music section, the Search tab searches music.
+          const to = label === "Search" && inMusic ? "/music/search" : baseTo;
+          const active = label === "Search" && inMusic ? pathname === "/music/search" : match(pathname);
           return (
             <li key={to} className="flex-1">
               <Link

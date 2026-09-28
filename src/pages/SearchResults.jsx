@@ -33,7 +33,7 @@ export default function SearchResults() {
       ) : (
         <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4">
           {artists.map((a) => (
-            <Link to={`/artist/${a.channelId}`} key={a.channelId} className="glass glass-hover rounded-2xl p-4 flex flex-col items-center text-center">
+            <Link to={`/music/artist/${a.channelId}`} key={a.channelId} className="glass glass-hover rounded-2xl p-4 flex flex-col items-center text-center">
               <img src={a.thumbnail} alt="" className="w-24 h-24 rounded-full object-cover mb-3" />
               <div className="font-medium truncate w-full">{a.title}</div>
               <div className="text-xs text-white/40 mt-1">Artist</div>
