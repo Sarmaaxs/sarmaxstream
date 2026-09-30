@@ -15,8 +15,10 @@ function saveRecentSearch(q) {
   } catch {}
 }
 
+const DEBUG = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('debug');
+
 async function post(body) {
-  const r = await fetch('/api/searchMusic', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  const r = await fetch('/api/searchMusic', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(DEBUG ? { ...body, debug: true } : body) });
   return r.json();
 }
 
@@ -84,7 +86,7 @@ export default function SearchResults() {
             onAddToPlaylist={lib.addToPlaylist}
             emptyText="No songs found. Try another search."
           />
-          {!tracks.length && why && (
+          {DEBUG && !tracks.length && why && (
             <div className="text-xs text-white/40 space-y-0.5">
               {Object.entries(why).map(([k, v]) => <div key={k}>{k}: {String(v)}</div>)}
             </div>

@@ -35,7 +35,7 @@ export default async function handler(req, res) {
     }
     cache.set(id, target);
   }
-  if (req.query && req.query.debug) {
+  if (req.query && req.query.debug && process.env.HEALTH_KEY && req.query.debug === process.env.HEALTH_KEY) {
     try {
       const r = await fetch(target, { redirect: 'manual' });
       let loc = r.headers.get('location') || '';

@@ -497,9 +497,9 @@ export default async function handler(req, res) {
     try { const f = await searchFree(query, max); free = f.tracks; diag = f.diag; } catch (e) { diag = { free: 'crashed' }; }
     const FREE_ENOUGH = 5;
     if (free.length >= FREE_ENOUGH) {
-      const payload = { tracks: free, artist: null, nextPageToken: '', diag };
+      const payload = { tracks: free, artist: null, nextPageToken: '' };
       resultCache.set(skey, payload);
-      return res.status(200).json(payload);
+      return res.status(200).json(body.debug ? { ...payload, diag } : payload);
     }
 
     // Not enough on Audius/Jamendo -> ask YouTube and put the free hits first.
@@ -510,13 +510,13 @@ export default async function handler(req, res) {
       const seen = new Set(free.map((t) => t.videoId));
       const yt = cap.payload.tracks.filter((t) => t.videoId && !seen.has(t.videoId));
       // Real songs first: YouTube leads, and only the good free-source matches are appended.
-      const payload = { tracks: [...yt, ...free].slice(0, max), artist: null, nextPageToken: cap.payload.nextPageToken || '', diag };
+      const payload = { tracks: [...yt, ...free].slice(0, max), artist: null, nextPageToken: cap.payload.nextPageToken || '' };
       if (payload.tracks.length) resultCache.set(skey, payload);
-      return res.status(200).json(payload);
+      return res.status(200).json(body.debug ? { ...payload, diag } : payload);
     }
     diag.youtube = (cap.payload && cap.payload.error) || `HTTP ${cap.code}`;
     // Always answer 200 with whatever we have plus the reason, so the page can explain itself.
-    return res.status(200).json({ tracks: free, artist: null, nextPageToken: '', diag, error: free.length ? '' : diag.youtube });
+    return res.status(200).json({ tracks: free, artist: null, nextPageToken: '', ...(body.debug ? { diag, error: free.length ? '' : diag.youtube } : {}) });
   }
 
   if (!CACHEABLE.has(mode)) {

@@ -4,6 +4,9 @@ import { rateLimit } from './_guard.js';
 import { searchAudius, searchJamendo } from './_free.js';
 
 export default async function handler(req, res) {
+  // Private: set HEALTH_KEY in Vercel, then open /api/health?key=YOURKEY. Without it this page does not exist.
+  const hk = process.env.HEALTH_KEY;
+  if (!hk || (req.query && req.query.key) !== hk) return res.status(404).json({ error: 'Not found' });
   if (!rateLimit(req, res, { name: 'health', max: 10, windowMs: 60 * 1000 })) return undefined;
   const env = {
     AUDIUS_API_KEY: !!process.env.AUDIUS_API_KEY,
