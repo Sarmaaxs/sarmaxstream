@@ -35,6 +35,16 @@ export default async function handler(req, res) {
     }
     cache.set(id, target);
   }
+  if (req.query && req.query.debug) {
+    try {
+      const r = await fetch(target, { redirect: 'manual' });
+      let loc = r.headers.get('location') || '';
+      try { loc = new URL(loc).host; } catch {}
+      return res.status(200).json({ id, status: r.status, redirectsTo: loc, contentType: r.headers.get('content-type') || '' });
+    } catch (e) {
+      return res.status(200).json({ id, error: e.message });
+    }
+  }
   res.setHeader('Cache-Control', 'private, max-age=300');
   res.statusCode = 302;
   res.setHeader('Location', target);

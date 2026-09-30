@@ -336,6 +336,7 @@ export function PlayerProvider({ children }) {
       }),
       on('error', () => {
         if (activeRef.current !== 'audio' || !el.getAttribute('src')) return;
+        try { console.warn('[sarmax] audio failed', el.error && el.error.code, el.src); } catch {}
         fallbackToYouTube(currentRef.current);
       }),
     ];

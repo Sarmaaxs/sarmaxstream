@@ -23,8 +23,21 @@ export default async function handler(req, res) {
       youtube = r.ok ? 'ok' : `HTTP ${r.status}: ${(d.error && d.error.message) || 'error'}`;
     } catch (e) { youtube = 'network error'; }
   }
+  // Can an Audius song actually be streamed? Test the first result.
+  let audiusStream = 'no Audius track to test';
+  if (a.items[0]) {
+    const id = a.items[0].videoId.replace('aud_', '');
+    try {
+      const key = process.env.AUDIUS_API_KEY;
+      const r = await fetch(`https://api.audius.co/v1/tracks/${id}/stream?app_name=sarmaxstream${key ? `&api_key=${encodeURIComponent(key)}` : ''}`, { redirect: 'manual' });
+      let loc = r.headers.get('location') || '';
+      try { loc = new URL(loc).host; } catch {}
+      audiusStream = `HTTP ${r.status}${loc ? ' -> ' + loc : ''}`;
+    } catch (e) { audiusStream = `failed: ${e.message}`; }
+  }
   res.setHeader('Cache-Control', 'no-store');
   return res.status(200).json({
+    audiusStream,
     env,
     audius: `${a.why} (${a.items.length} found)`,
     jamendo: `${j.why} (${j.items.length} found)`,
