@@ -509,7 +509,8 @@ export default async function handler(req, res) {
       diag.youtube = `ok (${cap.payload.tracks.length} found)`;
       const seen = new Set(free.map((t) => t.videoId));
       const yt = cap.payload.tracks.filter((t) => t.videoId && !seen.has(t.videoId));
-      const payload = { tracks: [...free, ...yt].slice(0, max), artist: null, nextPageToken: cap.payload.nextPageToken || '', diag };
+      // Real songs first: YouTube leads, and only the good free-source matches are appended.
+      const payload = { tracks: [...yt, ...free].slice(0, max), artist: null, nextPageToken: cap.payload.nextPageToken || '', diag };
       if (payload.tracks.length) resultCache.set(skey, payload);
       return res.status(200).json(payload);
     }

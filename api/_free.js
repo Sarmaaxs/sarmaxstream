@@ -34,14 +34,35 @@ function secToIso(s) {
 }
 
 const norm = (s) => (s || '').toLowerCase().replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
-const JUNK = /remix|cover|slowed|sped up|nightcore|karaoke|reaction|tutorial|mashup|bootleg|\bedit\b/i;
+const JUNK = /remix|\bcover\b|slowed|sped up|nightcore|karaoke|reaction|tutorial|mashup|bootleg|\bedit\b|type beat|instrumental|\bflip\b|rework|\bvip\b|lo-?fi|reverb|\b8d\b|bass boost|parody|tribute|unofficial|freestyle|\bprod\b|beat by|\bmix\b|version|acoustic|live at|demo|snippet|leak|cypher|challenge/i;
+const STOP = new Set(['the', 'a', 'an', 'of', 'and', 'feat', 'ft', 'by']);
+
+const qWords = (query) => norm(query).split(' ').filter((w) => w.length > 1);
 
 // Every meaningful word of the search must appear in "artist + title".
 function relevant(t, query) {
-  const words = norm(query).split(' ').filter((w) => w.length > 1);
+  const words = qWords(query);
   if (!words.length) return true;
   const hay = norm(`${t.artist} ${t.title}`);
   return words.every((w) => hay.includes(w));
+}
+
+// The searched name IS the uploader (e.g. "the weeknd" -> artist "The Weeknd").
+function artistMatches(t, query) {
+  const words = qWords(query).filter((w) => !STOP.has(w));
+  if (!words.length) return false;
+  const a = norm(t.artist);
+  return words.every((w) => a.includes(w));
+}
+
+// Only keep free-source tracks that look like the real thing:
+//  Audius: verified artist, or the artist name matches AND the track is genuinely popular.
+//  Jamendo: artist name or title matches (its catalog is real independent music).
+function official(t, query) {
+  if (!relevant(t, query)) return false;
+  if (JUNK.test(t.title) && !JUNK.test(query)) return false;
+  if (t.source === 'audius') return t._verified || (artistMatches(t, query) && (t._plays || 0) >= 20000);
+  return true;
 }
 
 export async function searchAudius(query, limit) {
@@ -63,6 +84,8 @@ export async function searchAudius(query, limit) {
       duration: secToIso(t.duration),
       source: 'audius',
       verified: false,
+      _verified: !!(t.user && t.user.is_verified),
+      _plays: Number(t.play_count) || 0,
     }));
   return { items, why: r.why };
 }
@@ -98,18 +121,14 @@ export async function searchFree(query, max = 24) {
     searchAudius(query, per).catch(() => empty),
     searchJamendo(query, per).catch(() => empty),
   ]);
-  const junkOk = (t) => !JUNK.test(t.title) || JUNK.test(query);
-  const strict = (t) => relevant(t, query) && junkOk(t);
-  let A = a.items.filter(strict), J = j.items.filter(strict);
-  // Nothing passed the strict word match? Accept the sources' own ranking instead.
-  if (!A.length && !J.length) { A = a.items.filter(junkOk).slice(0, 8); J = j.items.filter(junkOk).slice(0, 8); }
+  const A = a.items.filter((t) => official(t, query)), J = j.items.filter((t) => official(t, query));
   const out = [];
   for (let i = 0; i < Math.max(A.length, J.length); i++) {
     if (J[i]) out.push(J[i]);
     if (A[i]) out.push(A[i]);
   }
   return {
-    tracks: out.slice(0, max),
+    tracks: out.slice(0, max).map(({ _verified, _plays, ...t }) => t),
     diag: { audius: `${a.why} (${a.items.length} found)`, jamendo: `${j.why} (${j.items.length} found)` },
   };
 }
