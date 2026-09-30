@@ -28,6 +28,7 @@ export default function SearchResults() {
   const [artists, setArtists] = useState([]);
   const [loading, setLoading] = useState(true);
   const [recent, setRecent] = useState([]);
+  const [why, setWhy] = useState(null);
 
   useEffect(() => {
     try { setRecent(JSON.parse(localStorage.getItem(RECENT_KEY) || '[]')); } catch {}
@@ -46,6 +47,7 @@ export default function SearchResults() {
       ]);
       if (!active) return;
       setTracks(songs.tracks || []);
+      setWhy((songs.tracks || []).length ? null : (songs.diag || (songs.error ? { error: songs.error } : null)));
       setArtists((arts.artists || []).slice(0, 6));
       setLoading(false);
     })();
@@ -82,6 +84,11 @@ export default function SearchResults() {
             onAddToPlaylist={lib.addToPlaylist}
             emptyText="No songs found. Try another search."
           />
+          {!tracks.length && why && (
+            <div className="text-xs text-white/40 space-y-0.5">
+              {Object.entries(why).map(([k, v]) => <div key={k}>{k}: {String(v)}</div>)}
+            </div>
+          )}
 
           {artists.length > 0 && (
             <section>

@@ -492,26 +492,30 @@ export default async function handler(req, res) {
     if (shit) { res.setHeader('X-Cache', 'HIT'); return res.status(200).json(shit); }
     if (!rateLimit(req, res, { name: 'music', max: 40, windowMs: 60 * 1000 })) return undefined;
 
-    const free = await searchFree(query, max).catch(() => []);
+    let free = [];
+    let diag = {};
+    try { const f = await searchFree(query, max); free = f.tracks; diag = f.diag; } catch (e) { diag = { free: 'crashed' }; }
     const FREE_ENOUGH = 5;
     if (free.length >= FREE_ENOUGH) {
-      const payload = { tracks: free, artist: null, nextPageToken: '' };
+      const payload = { tracks: free, artist: null, nextPageToken: '', diag };
       resultCache.set(skey, payload);
       return res.status(200).json(payload);
     }
 
     // Not enough on Audius/Jamendo -> ask YouTube and put the free hits first.
-    const cap = { code: 200, payload: null, status(c) { this.code = c; return this; }, json(p) { this.payload = p; return this; }, setHeader() {} };
-    await inner(req, cap);
+    const cap = { code: 200, payload: null, status(c) { this.code = c; return this; }, json(p) { this.payload = p; return this; }, setHeader() {}, end() {} };
+    try { await inner(req, cap); } catch (e) { cap.code = 500; cap.payload = { error: e.message }; }
     if (cap.code === 200 && cap.payload && Array.isArray(cap.payload.tracks)) {
+      diag.youtube = `ok (${cap.payload.tracks.length} found)`;
       const seen = new Set(free.map((t) => t.videoId));
       const yt = cap.payload.tracks.filter((t) => t.videoId && !seen.has(t.videoId));
-      const payload = { tracks: [...free, ...yt].slice(0, max), artist: null, nextPageToken: cap.payload.nextPageToken || '' };
+      const payload = { tracks: [...free, ...yt].slice(0, max), artist: null, nextPageToken: cap.payload.nextPageToken || '', diag };
       if (payload.tracks.length) resultCache.set(skey, payload);
       return res.status(200).json(payload);
     }
-    if (free.length) return res.status(200).json({ tracks: free, artist: null, nextPageToken: '' });
-    return res.status(cap.code || 500).json(cap.payload || { error: 'Search failed', tracks: [] });
+    diag.youtube = (cap.payload && cap.payload.error) || `HTTP ${cap.code}`;
+    // Always answer 200 with whatever we have plus the reason, so the page can explain itself.
+    return res.status(200).json({ tracks: free, artist: null, nextPageToken: '', diag, error: free.length ? '' : diag.youtube });
   }
 
   if (!CACHEABLE.has(mode)) {
