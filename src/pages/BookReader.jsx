@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ChevronLeft, ChevronRight, ArrowLeft, Loader2, Heart, Minus, Plus } from 'lucide-react';
-import { getPrefs, setPrefs, getProgress, saveProgress, isSavedBook, toggleSavedBook } from '@/lib/books';
+import { getPrefs, setPrefs, getProgress, saveProgress, isSavedBook, toggleSavedBook, fetchJsonRetry } from '@/lib/books';
 
 const PAGE_CHARS = 1400;
 
@@ -55,8 +55,8 @@ export default function BookReader() {
     (async () => {
       try {
         const [meta, txt] = await Promise.all([
-          fetch('/api/searchBooks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'get', id }) }).then((r) => r.json()).catch(() => ({})),
-          fetch(`/api/bookText?id=${encodeURIComponent(id)}`).then((r) => r.json()),
+          fetchJsonRetry('/api/searchBooks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'get', id }) }, 2).catch(() => ({})),
+          fetchJsonRetry(`/api/bookText?id=${encodeURIComponent(id)}`, undefined, 3),
         ]);
         if (!active) return;
         if (!txt.text) { setStatus('error'); return; }

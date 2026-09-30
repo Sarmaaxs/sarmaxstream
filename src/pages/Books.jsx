@@ -2,11 +2,10 @@ import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Search, Loader2, BookOpen, X } from 'lucide-react';
 import Navbar from '@/components/Navbar';
-import { continueReading, getSaved } from '@/lib/books';
+import { continueReading, getSaved, fetchJsonRetry } from '@/lib/books';
 
 async function api(body) {
-  const r = await fetch('/api/searchBooks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-  return r.json();
+  return fetchJsonRetry('/api/searchBooks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
 }
 
 function BookCard({ b, progress }) {

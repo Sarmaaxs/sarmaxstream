@@ -19,6 +19,7 @@
 //     and won't hit iTunes' rate limits.
 
 import { rateLimit, makeCache, parseBody } from './_guard.js';
+import { searchFree } from './_free.js';
 
 const HARD_JUNK = /reaction|\b8d audio\b|slowed|sped up|nightcore|tutorial|karaoke|behind the scenes|full album|compilation|\b1 hour\b|\b1hr\b|greatest hits|best of|beatport|discograph/i;
 const SOFT_JUNK = /lyric|cover|remix|live at|acoustic|instrumental/i;
@@ -482,6 +483,36 @@ export default async function handler(req, res) {
   if (query.length > 100) return res.status(400).json({ error: 'Query too long', tracks: [], artists: [] });
   if (channelId && !/^UC[\w-]{20,30}$/.test(channelId)) return res.status(400).json({ error: 'Bad channel id', tracks: [], artists: [] });
   if (pageToken && !/^[\w-]{1,200}$/.test(pageToken)) return res.status(400).json({ error: 'Bad page token', tracks: [], artists: [] });
+
+  // ---- SEARCH: Audius + Jamendo first, YouTube only as the fallback ----
+  if (mode === 'search' && query && !pageToken && !body.noFree) {
+    const max = Math.min(Number(body.maxResults) || 24, 50);
+    const skey = JSON.stringify(['search2', query.toLowerCase(), max]);
+    const shit = resultCache.get(skey);
+    if (shit) { res.setHeader('X-Cache', 'HIT'); return res.status(200).json(shit); }
+    if (!rateLimit(req, res, { name: 'music', max: 40, windowMs: 60 * 1000 })) return undefined;
+
+    const free = await searchFree(query, max).catch(() => []);
+    const FREE_ENOUGH = 5;
+    if (free.length >= FREE_ENOUGH) {
+      const payload = { tracks: free, artist: null, nextPageToken: '' };
+      resultCache.set(skey, payload);
+      return res.status(200).json(payload);
+    }
+
+    // Not enough on Audius/Jamendo -> ask YouTube and put the free hits first.
+    const cap = { code: 200, payload: null, status(c) { this.code = c; return this; }, json(p) { this.payload = p; return this; }, setHeader() {} };
+    await inner(req, cap);
+    if (cap.code === 200 && cap.payload && Array.isArray(cap.payload.tracks)) {
+      const seen = new Set(free.map((t) => t.videoId));
+      const yt = cap.payload.tracks.filter((t) => t.videoId && !seen.has(t.videoId));
+      const payload = { tracks: [...free, ...yt].slice(0, max), artist: null, nextPageToken: cap.payload.nextPageToken || '' };
+      if (payload.tracks.length) resultCache.set(skey, payload);
+      return res.status(200).json(payload);
+    }
+    if (free.length) return res.status(200).json({ tracks: free, artist: null, nextPageToken: '' });
+    return res.status(cap.code || 500).json(cap.payload || { error: 'Search failed', tracks: [] });
+  }
 
   if (!CACHEABLE.has(mode)) {
     // 'chart' has its own long cache and is cheap; everything else falls through.

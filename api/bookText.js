@@ -7,7 +7,7 @@ const MAX_CHARS = 3_800_000; // stay under Vercel's ~4.5 MB response limit
 
 async function tryFetch(url) {
   const controller = new AbortController();
-  const t = setTimeout(() => controller.abort(), 12000);
+  const t = setTimeout(() => controller.abort(), 10000);
   try {
     const r = await fetch(url, { signal: controller.signal, redirect: 'follow' });
     if (!r.ok) return null;
@@ -33,9 +33,18 @@ export default async function handler(req, res) {
   const urls = [
     `https://www.gutenberg.org/cache/epub/${id}/pg${id}.txt`,
     `https://www.gutenberg.org/ebooks/${id}.txt.utf-8`,
+    `https://www.gutenberg.org/files/${id}/${id}-0.txt`,
+    `https://www.gutenberg.org/files/${id}/${id}.txt`,
   ];
-  let raw = null;
-  for (const u of urls) { raw = await tryFetch(u); if (raw) break; }
+  // Ask every mirror at once; the first real book text wins (twice, in case of a blip).
+  const race = () => new Promise((resolve) => {
+    let left = urls.length;
+    for (const u of urls) {
+      tryFetch(u).then((t) => { if (t) resolve(t); else if (--left === 0) resolve(null); });
+    }
+  });
+  let raw = await race();
+  if (!raw) raw = await race();
   if (!raw) return res.status(404).json({ error: "This book's text isn't available." });
 
   let text = stripBoilerplate(raw);

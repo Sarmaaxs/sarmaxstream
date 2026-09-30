@@ -36,3 +36,19 @@ export function continueReading() {
 
 export const getPrefs = () => ({ size: 19, theme: 'dark', ...read(PREFS_KEY, {}) });
 export const setPrefs = (p) => write(PREFS_KEY, p);
+
+// fetch + JSON with automatic retries, so a busy book server never shows an error on the first hiccup.
+export async function fetchJsonRetry(url, init, tries = 3) {
+  let last;
+  for (let i = 0; i < tries; i++) {
+    try {
+      const r = await fetch(url, init);
+      const data = await r.json();
+      if (r.ok && !data.error) return data;
+      if (r.status === 400 || r.status === 404) return data; // retrying won't help
+      last = data;
+    } catch (e) { last = { error: 'Network error' }; }
+    if (i < tries - 1) await new Promise((res) => setTimeout(res, 700 * (i + 1)));
+  }
+  return last || { error: 'The book library is busy right now. Try again in a moment.' };
+}
