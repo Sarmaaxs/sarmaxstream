@@ -23,9 +23,9 @@ export default async function handler(req, res) {
   let target = cache.get(id);
   if (!target) {
     if (aud) {
+      // Audius streaming is public; the key is optional.
       const key = process.env.AUDIUS_API_KEY;
-      if (!key) return res.status(500).json({ error: 'Audius not configured' });
-      target = `https://api.audius.co/v1/tracks/${aud[1]}/stream?app_name=sarmaxstream&api_key=${encodeURIComponent(key)}`;
+      target = `https://api.audius.co/v1/tracks/${aud[1]}/stream?app_name=sarmaxstream${key ? `&api_key=${encodeURIComponent(key)}` : ''}`;
     } else {
       const cid = process.env.JAMENDO_CLIENT_ID;
       if (!cid) return res.status(500).json({ error: 'Jamendo not configured' });

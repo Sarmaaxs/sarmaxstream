@@ -171,7 +171,6 @@ export function PlayerProvider({ children }) {
     const track = q[i];
     loadedRef.current = true;
     restoreRef.current = null;
-    errCountRef.current = 0;
     timeRef.current = 0;
     currentRef.current = track;
     setCurrentTime(0);
@@ -317,11 +316,9 @@ export function PlayerProvider({ children }) {
       queueRef.current = q;
       playAt(i);
     } catch {
-      errCountRef.current += 1;
-      if (errCountRef.current <= 3 && queueRef.current.length > 1) next();
-      else setIsPlaying(false);
+      setIsPlaying(false);
     }
-  }, [playAt, next]);
+  }, [playAt]);
 
   useEffect(() => {
     const a = audioRef.current;
@@ -351,6 +348,8 @@ export function PlayerProvider({ children }) {
     queueRef.current = q;
     let idx = q.findIndex((t) => t.videoId === track.videoId);
     if (idx < 0) idx = 0;
+    errCountRef.current = 0;
+    fbRef.current = '';
     playAt(idx);
   }, [playAt]);
 
