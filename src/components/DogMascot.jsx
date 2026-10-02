@@ -1,3 +1,4 @@
+import { cachedJson } from '@/lib/cache';
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { usePlayer } from '@/lib/PlayerContext';
 // base44 removed — using fetch to /api/searchMusic instead
@@ -31,11 +32,11 @@ export default function DogMascot() {
     const recent = player.recent || [];
     const artists = Array.from(new Set(recent.map((t) => t.artist).filter(Boolean))).slice(0, 5);
     const tasks = artists.map((a) =>
-    fetch('/api/searchMusic', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: a, mode: 'search', maxResults: 6 }) }).then(r => r.json()).
+    cachedJson('/api/searchMusic', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: a, mode: 'search', maxResults: 6 }) }, 10 * 60 * 1000).
     then((r) => r.tracks || []).catch(() => [])
     );
     tasks.push(
-      fetch('/api/searchMusic', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'trending', maxResults: 24 }) }).then(r => r.json()).
+      cachedJson('/api/searchMusic', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'trending', maxResults: 24 }) }, 60 * 60 * 1000).
       then((r) => r.tracks || []).catch(() => [])
     );
     const results = await Promise.all(tasks);

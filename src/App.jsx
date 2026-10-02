@@ -1,3 +1,4 @@
+import React, { Suspense, lazy } from 'react';
 import { Toaster } from "@/components/ui/toaster"
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
@@ -10,29 +11,32 @@ import MobileBottomNav from '@/components/MobileBottomNav';
 import Footer from '@/components/Footer';
 // Add page imports here
 import Home from '@/pages/Home';
-import SearchPage from '@/pages/Search';
-import TitleDetail from '@/pages/TitleDetail';
-import AnimePage from '@/pages/Anime';
-import Books from '@/pages/Books';
-import BookReader from '@/pages/BookReader';
-import AnimeDetail from '@/pages/AnimeDetail';
-import AnimeResolve from '@/pages/AnimeResolve';
-import WatchlistPage from '@/pages/Watchlist';
-import Login from '@/pages/Login';
-import Register from '@/pages/Register';
-import ForgotPassword from '@/pages/ForgotPassword';
-import ResetPassword from '@/pages/ResetPassword';
-import { Terms, Privacy, Faq, Contact } from '@/pages/InfoPages';
+const SearchPage = lazy(() => import('@/pages/Search'));
+const TitleDetail = lazy(() => import('@/pages/TitleDetail'));
+const AnimePage = lazy(() => import('@/pages/Anime'));
+const Books = lazy(() => import('@/pages/Books'));
+const BookReader = lazy(() => import('@/pages/BookReader'));
+const AnimeDetail = lazy(() => import('@/pages/AnimeDetail'));
+const AnimeResolve = lazy(() => import('@/pages/AnimeResolve'));
+const WatchlistPage = lazy(() => import('@/pages/Watchlist'));
+const Login = lazy(() => import('@/pages/Login'));
+const Register = lazy(() => import('@/pages/Register'));
+const ForgotPassword = lazy(() => import('@/pages/ForgotPassword'));
+const ResetPassword = lazy(() => import('@/pages/ResetPassword'));
+const Terms = lazy(() => import('@/pages/InfoPages').then((m) => ({ default: m.Terms })));
+const Privacy = lazy(() => import('@/pages/InfoPages').then((m) => ({ default: m.Privacy })));
+const Faq = lazy(() => import('@/pages/InfoPages').then((m) => ({ default: m.Faq })));
+const Contact = lazy(() => import('@/pages/InfoPages').then((m) => ({ default: m.Contact })));
 import ProtectedRoute from '@/components/ProtectedRoute';
 import { Navigate } from 'react-router-dom';
 // Music section
 import MusicLayout from '@/components/MusicLayout';
-import MusicHome from '@/pages/MusicHome';
-import Library from '@/pages/Library';
-import PlaylistView from '@/pages/PlaylistView';
-import SearchResults from '@/pages/SearchResults';
-import Artist from '@/pages/Artist';
-import MusicSettings from '@/pages/Settings';
+const MusicHome = lazy(() => import('@/pages/MusicHome'));
+const Library = lazy(() => import('@/pages/Library'));
+const PlaylistView = lazy(() => import('@/pages/PlaylistView'));
+const SearchResults = lazy(() => import('@/pages/SearchResults'));
+const Artist = lazy(() => import('@/pages/Artist'));
+const MusicSettings = lazy(() => import('@/pages/Settings'));
 import { SettingsProvider } from '@/lib/useSettings';
 import { PlayerProvider } from '@/lib/PlayerContext';
 import { Analytics } from "@vercel/analytics/react"
@@ -63,6 +67,7 @@ const AuthenticatedApp = () => {
   // Render the main app
   return (
     <>
+    <Suspense fallback={<div className="fixed inset-0 flex items-center justify-center"><div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin"></div></div>}>
     <Routes>
       <Route path="/login" element={<Login />} />
       <Route path="/register" element={<Register />} />
@@ -106,6 +111,7 @@ const AuthenticatedApp = () => {
 
       <Route path="*" element={<PageNotFound />} />
     </Routes>
+    </Suspense>
     <Footer />
     {/* Phones only (md:hidden); hides itself on the auth routes. */}
     <MobileBottomNav />

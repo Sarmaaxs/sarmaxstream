@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 // base44 removed — using fetch to /api/searchMusic instead
 import { usePlayer } from '@/lib/PlayerContext';
+import { cachedJson } from '@/lib/cache';
 import { Search, Play, X } from 'lucide-react';
 
 export default function SearchBar({ initial = '' }) {
@@ -21,7 +22,7 @@ export default function SearchBar({ initial = '' }) {
     timer.current = setTimeout(async () => {
       setLoading(true);
       try {
-        const res = await fetch('/api/searchMusic', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: v, mode: 'search', maxResults: 6 }) }).then(r => r.json());
+        const res = await cachedJson('/api/searchMusic', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: v, mode: 'search', maxResults: 6 }) }, 10 * 60 * 1000);
         setResults(res.tracks || []);
         setOpen(true);
       } catch {}

@@ -5,7 +5,7 @@ import Navbar from '@/components/Navbar';
 import { continueReading, getSaved, fetchJsonRetry } from '@/lib/books';
 
 async function api(body) {
-  return fetchJsonRetry('/api/searchBooks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  return fetchJsonRetry('/api/searchBooks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, 3, 30 * 60 * 1000);
 }
 
 function BookCard({ b, progress }) {

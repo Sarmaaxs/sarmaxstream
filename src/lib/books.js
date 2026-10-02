@@ -1,3 +1,4 @@
+import { cachedJson } from '@/lib/cache';
 // Reading list + progress, stored in the browser (works without an account).
 const SAVED_KEY = 'sarmax_books_saved';
 const PROGRESS_KEY = 'sarmax_books_progress';
@@ -38,7 +39,10 @@ export const getPrefs = () => ({ size: 19, theme: 'dark', ...read(PREFS_KEY, {})
 export const setPrefs = (p) => write(PREFS_KEY, p);
 
 // fetch + JSON with automatic retries, so a busy book server never shows an error on the first hiccup.
-export async function fetchJsonRetry(url, init, tries = 3) {
+export async function fetchJsonRetry(url, init, tries = 3, ttlMs = 0) {
+  if (ttlMs) {
+    try { const d = await cachedJson(url, init, ttlMs); if (d && !d.error) return d; } catch { /* fall through to the retrying path */ }
+  }
   let last;
   for (let i = 0; i < tries; i++) {
     try {

@@ -1,3 +1,4 @@
+import { cachedJson } from '@/lib/cache';
 import React, { useEffect, useState } from 'react';
 import { useSearchParams, Link } from 'react-router-dom';
 import SearchBar from '@/components/SearchBar';
@@ -18,8 +19,11 @@ function saveRecentSearch(q) {
 const DEBUG = typeof window !== 'undefined' && new URLSearchParams(window.location.search).has('debug');
 
 async function post(body) {
-  const r = await fetch('/api/searchMusic', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(DEBUG ? { ...body, debug: true } : body) });
-  return r.json();
+  if (DEBUG) {
+    const r = await fetch('/api/searchMusic', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ ...body, debug: true }) });
+    return r.json();
+  }
+  return cachedJson('/api/searchMusic', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, 10 * 60 * 1000);
 }
 
 export default function SearchResults() {

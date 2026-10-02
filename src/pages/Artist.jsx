@@ -1,3 +1,4 @@
+import { cachedJson } from '@/lib/cache';
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
 // base44 removed — using fetch to /api/searchMusic instead
@@ -20,7 +21,7 @@ export default function Artist() {
     setLoading(true);
     (async () => {
       try {
-        const res = await fetch('/api/searchMusic', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'artistSongs', channelId, maxResults: 50 }) }).then(r => r.json());
+        const res = await cachedJson('/api/searchMusic', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'artistSongs', channelId, maxResults: 50 }) }, 60 * 60 * 1000);
         setTracks(res.tracks || []);
         setArtist(res.artist || null);
       } catch {}

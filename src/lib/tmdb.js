@@ -1,3 +1,4 @@
+import { cachedJson } from "@/lib/cache";
 const IMG_BASE = "https://image.tmdb.org/t/p";
 
 // Anime posters come from MyAnimeList as full URLs (https://...), so pass
@@ -20,13 +21,10 @@ export function backdropUrl(path, size = "original") {
 // path: e.g. "trending/movie/week", "movie/550", "search/multi", "genre/movie/list"
 const API = import.meta.env.VITE_API_URL;
 export async function tmdb(path, params = {}) {
-  const res = await fetch(`${API}/tmdb`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ path, params }),
-  });
-  if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error || "Request failed");
-  return (await res.json()).data;
+  const body = JSON.stringify({ path, params });
+  const res = await cachedJson(`${API}/tmdb`, { method: "POST", headers: { "Content-Type": "application/json" }, body }, 15 * 60 * 1000);
+  if (!res || res.error) throw new Error((res && res.error) || "Request failed");
+  return res.data;
 }
 
 export async function tmdbTrending(window = "week") {

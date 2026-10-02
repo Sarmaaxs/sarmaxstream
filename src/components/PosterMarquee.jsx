@@ -1,3 +1,4 @@
+import { cachedJson } from '@/lib/cache';
 import React, { useEffect, useState } from 'react';
 // base44 removed — using fetch to /api/searchMusic instead
 
@@ -6,7 +7,7 @@ export default function PosterMarquee() {
   useEffect(() => {
     (async () => {
       try {
-        const res = await fetch('/api/searchMusic', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'trending', maxResults: 24 }) }).then(r => r.json());
+        const res = await cachedJson('/api/searchMusic', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ mode: 'trending', maxResults: 24 }) }, 60 * 60 * 1000);
         setImgs((res.tracks || []).map((t) => t.thumbnail).filter(Boolean));
       } catch {}
     })();

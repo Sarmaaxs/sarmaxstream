@@ -1,3 +1,4 @@
+import { cachedJson } from '@/lib/cache';
 import React, { useEffect, useState } from 'react';
 // base44 removed — using fetch to /api/searchMusic instead
 import SearchBar from '@/components/SearchBar';
@@ -13,7 +14,7 @@ export default function Home() {
     (async () => {
       try {
         // GET so Vercel's CDN can cache the chart (POST responses can't be cached).
-        const res = await fetch('/api/searchMusic?mode=chart').then(r => r.json());
+        const res = await cachedJson('/api/searchMusic?mode=chart', undefined, 60 * 60 * 1000);
         setTracks(res.tracks || []);
         if (res.error) setError(res.error);
       } catch {
