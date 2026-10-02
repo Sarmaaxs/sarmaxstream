@@ -20,6 +20,7 @@
 
 import { rateLimit, makeCache, parseBody } from './_guard.js';
 import { searchFree } from './_free.js';
+import { searchCatalog } from './_catalog.js';
 
 const HARD_JUNK = /reaction|\b8d audio\b|slowed|sped up|nightcore|tutorial|karaoke|behind the scenes|full album|compilation|\b1 hour\b|\b1hr\b|greatest hits|best of|beatport|discograph/i;
 const SOFT_JUNK = /lyric|cover|remix|live at|acoustic|instrumental/i;
@@ -484,39 +485,24 @@ export default async function handler(req, res) {
   if (channelId && !/^UC[\w-]{20,30}$/.test(channelId)) return res.status(400).json({ error: 'Bad channel id', tracks: [], artists: [] });
   if (pageToken && !/^[\w-]{1,200}$/.test(pageToken)) return res.status(400).json({ error: 'Bad page token', tracks: [], artists: [] });
 
-  // ---- SEARCH: Audius + Jamendo first, YouTube only as the fallback ----
-  if (mode === 'search' && query && !pageToken && !body.noFree) {
+  // ---- SEARCH: free catalogs (Deezer / iTunes). No YouTube quota is spent on searching. ----
+  // Playing a result is resolved later by /api/resolve: Audius -> Jamendo -> YouTube.
+  if (mode === 'search' && query && !pageToken) {
     const max = Math.min(Number(body.maxResults) || 24, 50);
-    const skey = JSON.stringify(['search2', query.toLowerCase(), max]);
+    const skey = JSON.stringify(['search3', query.toLowerCase(), max]);
     const shit = resultCache.get(skey);
     if (shit) { res.setHeader('X-Cache', 'HIT'); return res.status(200).json(shit); }
     if (!rateLimit(req, res, { name: 'music', max: 40, windowMs: 60 * 1000 })) return undefined;
 
-    let free = [];
-    let diag = {};
-    try { const f = await searchFree(query, max); free = f.tracks; diag = f.diag; } catch (e) { diag = { free: 'crashed' }; }
-    const FREE_ENOUGH = 5;
-    if (free.length >= FREE_ENOUGH) {
-      const payload = { tracks: free, artist: null, nextPageToken: '' };
-      resultCache.set(skey, payload);
-      return res.status(200).json(body.debug ? { ...payload, diag } : payload);
+    let tracks = await searchCatalog(query, max).catch(() => []);
+    let diag = { catalog: `${tracks.length} found` };
+    if (!tracks.length) {
+      // Catalog down or nothing there: fall back to Audius / Jamendo directly.
+      try { const f = await searchFree(query, max); tracks = f.tracks; diag = { ...diag, ...f.diag }; } catch (e) { diag.free = 'crashed'; }
     }
-
-    // Not enough on Audius/Jamendo -> ask YouTube and put the free hits first.
-    const cap = { code: 200, payload: null, status(c) { this.code = c; return this; }, json(p) { this.payload = p; return this; }, setHeader() {}, end() {} };
-    try { await inner(req, cap); } catch (e) { cap.code = 500; cap.payload = { error: e.message }; }
-    if (cap.code === 200 && cap.payload && Array.isArray(cap.payload.tracks)) {
-      diag.youtube = `ok (${cap.payload.tracks.length} found)`;
-      const seen = new Set(free.map((t) => t.videoId));
-      const yt = cap.payload.tracks.filter((t) => t.videoId && !seen.has(t.videoId));
-      // Real songs first: YouTube leads, and only the good free-source matches are appended.
-      const payload = { tracks: [...yt, ...free].slice(0, max), artist: null, nextPageToken: cap.payload.nextPageToken || '' };
-      if (payload.tracks.length) resultCache.set(skey, payload);
-      return res.status(200).json(body.debug ? { ...payload, diag } : payload);
-    }
-    diag.youtube = (cap.payload && cap.payload.error) || `HTTP ${cap.code}`;
-    // Always answer 200 with whatever we have plus the reason, so the page can explain itself.
-    return res.status(200).json({ tracks: free, artist: null, nextPageToken: '', ...(body.debug ? { diag, error: free.length ? '' : diag.youtube } : {}) });
+    const payload = { tracks, artist: null, nextPageToken: '' };
+    if (tracks.length) resultCache.set(skey, payload);
+    return res.status(200).json(body.debug ? { ...payload, diag } : payload);
   }
 
   if (!CACHEABLE.has(mode)) {

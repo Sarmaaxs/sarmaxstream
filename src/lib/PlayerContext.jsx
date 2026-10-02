@@ -18,6 +18,9 @@ function loadSaved() {
 // Tracks from Audius / Jamendo have ids like "aud_xxx" / "jam_123" and stream through /api/stream.
 // Everything else is a YouTube video id.
 const isAudioId = (id) => typeof id === 'string' && (id.startsWith('aud_') || id.startsWith('jam_'));
+// Catalog ids (Deezer / iTunes) have no audio yet; /api/resolve finds one when you press play.
+const isCatalogId = (id) => typeof id === 'string' && /^(dz|it)_\d+$/.test(id);
+const parseDur = (iso) => { const m = /^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/.exec(iso || ''); return m ? (+m[1] || 0) * 3600 + (+m[2] || 0) * 60 + (+m[3] || 0) : 0; };
 const streamUrl = (id) => `/api/stream?id=${encodeURIComponent(id)}`;
 
 // A tiny wrapper that gives an <audio> element the same method names as the YouTube player,
@@ -165,6 +168,8 @@ export function PlayerProvider({ children }) {
     }
   }, []);
 
+  const playAtRef = useRef(null);
+  const nextRef = useRef(null);
   const playAt = useCallback((i) => {
     const q = queueRef.current;
     if (i < 0 || i >= q.length) return;
@@ -181,6 +186,28 @@ export function PlayerProvider({ children }) {
       const f = r.filter((x) => x.videoId !== track.videoId);
       return [{ videoId: track.videoId, title: track.title, artist: track.artist, thumbnail: track.thumbnail }, ...f].slice(0, 30);
     });
+    if (isCatalogId(track.videoId)) {
+      // Silence whatever was playing, then ask the server where this song can be played.
+      try { audioRef.current && audioRef.current.stopVideo(); } catch {}
+      try { ytRef.current && ytRef.current.pauseVideo && ytRef.current.pauseVideo(); } catch {}
+      setIsPlaying(false);
+      const qs = new URLSearchParams({ artist: track.artist || '', title: track.title || '', dur: String(parseDur(track.duration)) });
+      fetch(`/api/resolve?${qs}`).then((r) => (r.ok ? r.json() : null)).then((res) => {
+        if (currentRef.current !== track) return; // user already picked something else
+        if (!res || !res.videoId) throw new Error('unresolved');
+        const repl = { ...track, videoId: res.videoId };
+        const list = queueRef.current.slice();
+        const at = list.findIndex((t) => t.videoId === track.videoId);
+        if (at >= 0) { list[at] = repl; setQueue(list); queueRef.current = list; }
+        playAtRef.current && playAtRef.current(at >= 0 ? at : i);
+      }).catch(() => {
+        if (currentRef.current !== track) return;
+        errCountRef.current += 1;
+        if (errCountRef.current <= 3 && queueRef.current.length > 1) setTimeout(() => nextRef.current && nextRef.current(), 400);
+        else setIsPlaying(false);
+      });
+      return;
+    }
     switchEngine(track.videoId);
     if (eng() && eng().loadVideoById) {
       eng().loadVideoById(track.videoId);
@@ -189,6 +216,7 @@ export function PlayerProvider({ children }) {
     }
   }, [applyQuality, applySpeed, restoreVolume]);
 
+  playAtRef.current = playAt;
   const next = useCallback(() => {
     const q = queueRef.current;
     if (!q.length) return;
@@ -202,6 +230,8 @@ export function PlayerProvider({ children }) {
     if (i >= q.length) i = 0;
     playAt(i);
   }, [playAt]);
+
+  nextRef.current = next;
 
   const prev = useCallback(() => {
     const q = queueRef.current;
@@ -224,7 +254,7 @@ export function PlayerProvider({ children }) {
             setIsReady(true);
             try { e.target.setVolume(volumeRef.current); applyQuality(); applySpeed(); } catch {}
             const r = restoreRef.current;
-            if (r && !loadedRef.current) {
+            if (r && !loadedRef.current && !isCatalogId(r.videoId)) {
               if (isAudioId(r.videoId)) {
                 activeRef.current = 'audio';
                 try { audioRef.current.cueVideoById({ videoId: r.videoId, startSeconds: r.time || 0 }); } catch {}
@@ -301,14 +331,10 @@ export function PlayerProvider({ children }) {
     if (!track || fbRef.current === track.videoId) { setIsPlaying(false); return; }
     fbRef.current = track.videoId;
     try {
-      const r = await fetch('/api/searchMusic', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query: `${track.artist || ''} ${track.title || ''}`.trim(), mode: 'search', maxResults: 10, noFree: true }),
-      }).then((x) => x.json());
-      const yt = (r.tracks || []).find((t) => t.videoId && !isAudioId(t.videoId));
-      if (!yt) throw new Error('not on YouTube');
-      const repl = { ...track, videoId: yt.videoId, thumbnail: track.thumbnail || yt.thumbnail, duration: yt.duration || track.duration || '' };
+      const qs = new URLSearchParams({ artist: track.artist || '', title: track.title || '', dur: String(parseDur(track.duration)), skip: 'free' });
+      const yt = await fetch(`/api/resolve?${qs}`).then((x) => (x.ok ? x.json() : null));
+      if (!yt || !yt.videoId) throw new Error('not on YouTube');
+      const repl = { ...track, videoId: yt.videoId };
       const q = queueRef.current.slice();
       let i = q.findIndex((t) => t.videoId === track.videoId);
       if (i >= 0) q[i] = repl; else { q.length = 0; q.push(repl); i = 0; }

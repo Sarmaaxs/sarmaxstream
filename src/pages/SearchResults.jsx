@@ -43,10 +43,8 @@ export default function SearchResults() {
     saveRecentSearch(q);
     (async () => {
       // Songs are the main result; artists are a small extra row, and only real ones.
-      const [songs, arts] = await Promise.all([
-        post({ query: q, mode: 'search', maxResults: 25 }).catch(() => ({})),
-        post({ query: q, mode: 'artists', maxResults: 10 }).catch(() => ({})),
-      ]);
+      const songs = await post({ query: q, mode: 'search', maxResults: 25 }).catch(() => ({}));
+      const arts = {};
       if (!active) return;
       setTracks(songs.tracks || []);
       setWhy((songs.tracks || []).length ? null : (songs.diag || (songs.error ? { error: songs.error } : null)));
