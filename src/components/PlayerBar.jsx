@@ -1,7 +1,7 @@
 import React from 'react';
 import { usePlayer } from '@/lib/PlayerContext';
 import NowPlaying from '@/components/NowPlaying';
-import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Repeat, Shuffle, ChevronUp } from 'lucide-react';
+import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Repeat, Shuffle, ChevronUp, Loader2 } from 'lucide-react';
 
 function fmt(sec) {
   if (!sec || isNaN(sec)) return '0:00';
@@ -32,7 +32,7 @@ export default function PlayerBar() {
               <button onClick={p.toggleShuffle} className={`hidden sm:block ${p.shuffle ? 'text-primary' : 'text-white/60 hover:text-white'}`} aria-label="Shuffle"><Shuffle size={17} /></button>
               <button onClick={p.prev} className="p-1.5 text-white/80 hover:text-white" aria-label="Previous"><SkipBack size={20} /></button>
               <button onClick={p.togglePlay} className="bg-primary text-primary-foreground rounded-full p-2.5 shadow-lg hover:scale-105 transition" aria-label="Play/Pause">
-                {p.isPlaying ? <Pause size={20} /> : <Play size={20} className="ml-0.5" />}
+                {p.resolving ? <Loader2 size={20} className="animate-spin" /> : p.isPlaying ? <Pause size={20} /> : <Play size={20} className="ml-0.5" />}
               </button>
               <button onClick={p.next} className="p-1.5 text-white/80 hover:text-white" aria-label="Next"><SkipForward size={20} /></button>
               <button onClick={p.toggleRepeat} className={`hidden sm:block ${p.repeat ? 'text-primary' : 'text-white/60 hover:text-white'}`} aria-label="Repeat"><Repeat size={17} /></button>

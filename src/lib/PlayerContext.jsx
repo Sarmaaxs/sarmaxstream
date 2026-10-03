@@ -168,12 +168,16 @@ export function PlayerProvider({ children }) {
     }
   }, []);
 
+  const resolvingRef = useRef(false);
+  const [resolving, setResolving] = useState(false);
   const playAtRef = useRef(null);
   const nextRef = useRef(null);
   const playAt = useCallback((i) => {
     const q = queueRef.current;
     if (i < 0 || i >= q.length) return;
     const track = q[i];
+    resolvingRef.current = false;
+    setResolving(false);
     loadedRef.current = true;
     restoreRef.current = null;
     timeRef.current = 0;
@@ -191,17 +195,21 @@ export function PlayerProvider({ children }) {
       try { audioRef.current && audioRef.current.stopVideo(); } catch {}
       try { ytRef.current && ytRef.current.pauseVideo && ytRef.current.pauseVideo(); } catch {}
       setIsPlaying(false);
+      resolvingRef.current = true;
+      setResolving(true);
       const qs = new URLSearchParams({ artist: track.artist || '', title: track.title || '', dur: String(parseDur(track.duration)) });
       fetch(`/api/resolve?${qs}`).then((r) => (r.ok ? r.json() : null)).then((res) => {
         if (currentRef.current !== track) return; // user already picked something else
         if (!res || !res.videoId) throw new Error('unresolved');
-        const repl = { ...track, videoId: res.videoId };
+        const repl = { ...track, videoId: res.videoId, catalogId: track.catalogId || track.videoId };
         const list = queueRef.current.slice();
         const at = list.findIndex((t) => t.videoId === track.videoId);
         if (at >= 0) { list[at] = repl; setQueue(list); queueRef.current = list; }
         playAtRef.current && playAtRef.current(at >= 0 ? at : i);
       }).catch(() => {
         if (currentRef.current !== track) return;
+        resolvingRef.current = false;
+        setResolving(false);
         errCountRef.current += 1;
         if (errCountRef.current <= 3 && queueRef.current.length > 1) setTimeout(() => nextRef.current && nextRef.current(), 400);
         else setIsPlaying(false);
@@ -334,7 +342,7 @@ export function PlayerProvider({ children }) {
       const qs = new URLSearchParams({ artist: track.artist || '', title: track.title || '', dur: String(parseDur(track.duration)), skip: 'free' });
       const yt = await fetch(`/api/resolve?${qs}`).then((x) => (x.ok ? x.json() : null));
       if (!yt || !yt.videoId) throw new Error('not on YouTube');
-      const repl = { ...track, videoId: yt.videoId };
+      const repl = { ...track, videoId: yt.videoId, catalogId: track.catalogId || track.videoId };
       const q = queueRef.current.slice();
       let i = q.findIndex((t) => t.videoId === track.videoId);
       if (i >= 0) q[i] = repl; else { q.length = 0; q.push(repl); i = 0; }
@@ -396,7 +404,7 @@ export function PlayerProvider({ children }) {
   }, [switchEngine]);
 
   const togglePlay = useCallback(() => {
-    if (!eng()) return;
+    if (!eng() || resolvingRef.current) return; // a new song is being found: never resume the old one
     try {
       const st = eng().getPlayerState ? eng().getPlayerState() : null;
       const playingNow = st === 1 || st === 3; // playing or buffering
@@ -444,7 +452,7 @@ export function PlayerProvider({ children }) {
   useEffect(() => {
     if (typeof navigator === 'undefined' || !navigator.mediaSession) return;
     try {
-      navigator.mediaSession.setActionHandler('play', () => { try { eng()?.playVideo?.(); } catch {} });
+      navigator.mediaSession.setActionHandler('play', () => { try { if (!resolvingRef.current) eng()?.playVideo?.(); } catch {} });
       navigator.mediaSession.setActionHandler('pause', () => { try { eng()?.pauseVideo?.(); } catch {} });
       navigator.mediaSession.setActionHandler('previoustrack', () => prev());
       navigator.mediaSession.setActionHandler('nexttrack', () => next());
@@ -461,7 +469,7 @@ export function PlayerProvider({ children }) {
   }, [current, isPlaying, prev, next]);
 
   const value = {
-    current, isPlaying, isReady, currentTime, duration, volume, muted, repeat, shuffle, queue, index,
+    current, isPlaying, isReady, resolving, currentTime, duration, volume, muted, repeat, shuffle, queue, index,
     nowPlayingOpen, openNowPlaying, closeNowPlaying, recent,
     playTrack, cueTrack, togglePlay, next, prev, seek, setVolume: setVol, toggleMute, toggleRepeat, toggleShuffle
   };

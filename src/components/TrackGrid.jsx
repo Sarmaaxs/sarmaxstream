@@ -19,7 +19,7 @@ export default function TrackGrid({ tracks, savedIds, onToggleSave, emptyText = 
   return (
     <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4">
       {tracks.map((t, i) => {
-        const playing = player.current && player.current.videoId === t.videoId;
+        const playing = player.current && (player.current.videoId === t.videoId || player.current.catalogId === t.videoId);
         return (
           <div key={t.videoId + i} onClick={() => (playing ? player.togglePlay() : player.playTrack(t, tracks))} className="group glass glass-hover rounded-2xl p-3 cursor-pointer flex flex-col">
             <div className="relative aspect-square w-full rounded-xl overflow-hidden mb-3">

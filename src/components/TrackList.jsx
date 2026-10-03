@@ -20,7 +20,7 @@ export default function TrackList({ tracks, savedIds, playlists, onToggleSave, o
   return (
     <div className="glass rounded-2xl overflow-hidden">
       {tracks.map((t, i) => {
-        const playing = player.current && player.current.videoId === t.videoId;
+        const playing = player.current && (player.current.videoId === t.videoId || player.current.catalogId === t.videoId);
         return (
           <div key={t.videoId + i} className={`group flex items-center gap-3 px-3 py-2.5 ${i % 2 ? '' : 'bg-white/[0.02]'} ${playing ? 'bg-primary/10' : ''}`}>
             <div className="w-6 text-center text-xs text-white/40">{i + 1}</div>
