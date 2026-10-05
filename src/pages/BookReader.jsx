@@ -27,85 +27,97 @@ function toParas(text) {
   return out;
 }
 
-// Fill fixed-size pages by line budget, splitting long paragraphs at word boundaries.
-function paginate(paras, lines, cpl) {
-  const pages = [];
-  let segs = [];
-  let used = 0;
-  const flush = () => { if (segs.length) { pages.push({ segs, off: segs[0].off }); segs = []; used = 0; } };
-  for (const p of paras) {
-    if (p.kind === 'head') {
-      const need = Math.ceil(p.text.length / cpl) + 2;
-      if (used + need > lines) flush();
-      segs.push({ text: p.text, kind: 'head', off: p.off });
-      used += need;
-      continue;
-    }
-    let rest = p.text;
-    let off = p.off;
-    let cont = false;
-    while (rest.length) {
-      let room = lines - used;
-      if (room < 2) { flush(); room = lines; }
-      const cap = Math.floor(room * cpl);
-      let take = rest;
-      if (rest.length > cap) {
-        const cut = rest.lastIndexOf(' ', cap);
-        take = rest.slice(0, cut > cap * 0.5 ? cut : cap);
-      }
-      segs.push({ text: take.trim(), kind: 'p', off, cont });
-      used += Math.ceil(take.length / cpl);
-      off += take.length + 1;
-      rest = rest.slice(take.length).trimStart();
-      cont = true;
-      if (rest.length) flush();
-    }
-  }
-  flush();
-  return pages;
-}
+// Page text area inside the page (must match the <Page> layout below).
+const PAD = { x: 22, top: 34, bottom: 38 };
 
-// How many lines / characters-per-line fit, measured with the real font in the real width.
-function measure(textW, textH, fontSize) {
-  const lineH = Math.round(fontSize * 1.62);
-  const div = document.createElement('div');
-  div.lang = 'en';
-  div.style.cssText = `position:absolute;visibility:hidden;left:-9999px;top:0;width:${textW}px;font:${fontSize}px/${lineH}px Georgia,"Times New Roman",serif;text-align:justify;hyphens:auto;`;
-  const sample = 'The old house stood quietly at the end of the lane, and nobody who passed it ever thought to look inside. ';
-  let s = '';
-  while (s.length < 1600) s += sample;
-  div.textContent = s;
-  document.body.appendChild(div);
-  const lines = Math.max(1, Math.round(div.getBoundingClientRect().height / lineH));
-  document.body.removeChild(div);
-  return { lineH, lines: Math.max(4, Math.floor(textH / lineH)), cpl: s.length / lines, textW, textH, fontSize };
-}
-
-// Safety net: render pages off-screen and make sure none of them overflows (so no line is ever cut off).
-function overflows(pages, g) {
+function makeBox(g) {
   const box = document.createElement('div');
   box.lang = 'en';
   box.style.cssText = `position:absolute;visibility:hidden;left:-9999px;top:0;width:${g.textW}px;overflow:hidden;font:${g.fontSize}px/${g.lineH}px Georgia,"Times New Roman",serif;text-align:justify;hyphens:auto;`;
   document.body.appendChild(box);
-  const step = Math.max(1, Math.floor(pages.length / 160));
-  let bad = 0;
-  for (let i = 0; i < pages.length; i += step) {
-    box.innerHTML = '';
-    for (const sg of pages[i].segs) {
-      const el = document.createElement(sg.kind === 'head' ? 'div' : 'p');
-      el.textContent = sg.text;
-      if (sg.kind === 'head') el.style.cssText = `text-align:center;font-variant:small-caps;letter-spacing:0.08em;font-weight:600;margin:${g.lineH}px 0`;
-      else el.style.cssText = `margin:0;text-indent:${sg.cont ? 0 : '1.5em'}`;
-      box.appendChild(el);
+  return box;
+}
+
+function makeEl(kind, text, cont, lineH) {
+  const el = document.createElement(kind === 'head' ? 'div' : 'p');
+  el.textContent = text;
+  el.style.cssText = kind === 'head'
+    ? `text-align:center;font-variant:small-caps;letter-spacing:0.08em;font-weight:600;margin:${lineH}px 0`
+    : `margin:0;text-indent:${cont ? 0 : '1.5em'}`;
+  return el;
+}
+
+// Fill every page to the bottom: text is added in a hidden box with the real font and width,
+// and the last paragraph is split at the exact word where the page runs out of room.
+function paginate(paras, g) {
+  const box = makeBox(g);
+  const limit = g.lines * g.lineH;
+  const height = () => box.getBoundingClientRect().height;
+  const fits = () => height() <= limit + 0.5;
+  const pages = [];
+  let segs = [];
+  const flush = () => {
+    if (segs.length) { pages.push({ segs, off: segs[0].off }); segs = []; }
+    box.textContent = '';
+  };
+
+  for (const p of paras) {
+    if (p.kind === 'head') {
+      box.appendChild(makeEl('head', p.text, false, g.lineH));
+      // keep a chapter title together with at least two lines of text
+      if (segs.length && height() + 2 * g.lineH > limit) {
+        flush();
+        box.appendChild(makeEl('head', p.text, false, g.lineH));
+      }
+      segs.push({ text: p.text, kind: 'head', off: p.off });
+      continue;
     }
-    if (box.getBoundingClientRect().height > g.textH + 0.5) bad += 1;
+    let words = p.text.split(' ');
+    let off = p.off;
+    let cont = false;
+    while (words.length) {
+      // don't start a paragraph on the very last line of a page
+      if (segs.length && limit - height() < 2 * g.lineH) flush();
+      const el = makeEl('p', words.join(' '), cont, g.lineH);
+      box.appendChild(el);
+      if (fits()) {
+        segs.push({ text: words.join(' '), kind: 'p', off, cont });
+        break;
+      }
+      // largest number of words that still fits on this page
+      let lo = 0;
+      let hi = words.length - 1;
+      while (lo < hi) {
+        const mid = Math.ceil((lo + hi) / 2);
+        el.textContent = words.slice(0, mid).join(' ');
+        if (fits()) lo = mid; else hi = mid - 1;
+      }
+      if (lo === 0) {
+        if (segs.length) { box.removeChild(el); flush(); continue; }
+        lo = 1; // a single word wider than the page: never loop forever
+      }
+      const take = words.slice(0, lo).join(' ');
+      el.textContent = take;
+      segs.push({ text: take, kind: 'p', off, cont });
+      off += take.length + 1;
+      words = words.slice(lo);
+      cont = true;
+      flush();
+    }
   }
+  flush();
   document.body.removeChild(box);
-  return bad > 0;
+  return pages;
+}
+
+// How many whole lines fit in the text area of a page.
+function measure(textW, textH, fontSize) {
+  const lineH = Math.round(fontSize * 1.5);
+  return { lineH, lines: Math.max(4, Math.floor(textH / lineH)), textW, textH, fontSize };
 }
 
 const Page = React.memo(function Page({ data, num, theme, fontSize, lineH, title, w, h, side }) {
-  const pad = { x: 30, top: 38, bottom: 46 };
+  const pad = PAD;
   return (
     <div
       style={{
@@ -133,13 +145,13 @@ const Page = React.memo(function Page({ data, num, theme, fontSize, lineH, title
       )}
       {data && data.type === 'text' && (
         <>
-          <div style={{ position: 'absolute', top: 14, left: pad.x, right: pad.x, textAlign: 'center', fontSize: 11, letterSpacing: '0.14em', textTransform: 'uppercase', color: theme.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</div>
+          <div style={{ position: 'absolute', top: 12, left: pad.x, right: pad.x, textAlign: 'center', fontSize: 11, letterSpacing: '0.14em', textTransform: 'uppercase', color: theme.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</div>
           <div lang="en" style={{ position: 'absolute', top: pad.top, left: pad.x, right: pad.x, bottom: pad.bottom, overflow: 'hidden', fontSize, lineHeight: `${lineH}px`, textAlign: 'justify', hyphens: 'auto' }}>
             {data.segs.map((s, i) => (s.kind === 'head'
               ? <div key={i} style={{ textAlign: 'center', fontVariant: 'small-caps', letterSpacing: '0.08em', fontWeight: 600, margin: `${lineH}px 0 ${lineH}px` }}>{s.text}</div>
               : <p key={i} style={{ margin: 0, textIndent: s.cont ? 0 : '1.5em' }}>{s.text}</p>))}
           </div>
-          <div style={{ position: 'absolute', bottom: 16, left: 0, right: 0, textAlign: 'center', fontSize: 12, color: theme.muted }}>{num}</div>
+          <div style={{ position: 'absolute', bottom: 12, left: 0, right: 0, textAlign: 'center', fontSize: 12, color: theme.muted }}>{num}</div>
         </>
       )}
     </div>
@@ -167,7 +179,7 @@ export default function BookReader() {
   const drag = useRef(null);
   const offRef = useRef(null); // text offset of the page being read (survives re-pagination)
   const theme = THEMES[prefs.theme] || THEMES.dark;
-  const fontSize = Math.max(14, Math.min(26, prefs.fontSize || 18));
+  const fontSize = Math.max(14, Math.min(26, prefs.fontSize || prefs.size || 19));
 
   // ---------- load (cached in IndexedDB so reopening is instant) ----------
   useEffect(() => {
@@ -213,9 +225,12 @@ export default function BookReader() {
     return () => ro.disconnect();
   }, [status]);
 
+  // The page fills the whole reading area (like a real book held in the hand);
+  // on wide screens it keeps a book-page shape and is centred.
   const dims = useMemo(() => {
-    const w = Math.max(220, Math.min(stage.w - 28, 540));
-    const h = Math.max(300, Math.min(stage.h - 20, Math.round(w * 1.5)));
+    const h = Math.max(300, stage.h - 8);
+    const maxW = Math.max(220, stage.w - 18); // leaves room for the page-block edge on the right
+    const w = Math.min(maxW, Math.round(h * 0.74), 720);
     return { w, h };
   }, [stage]);
 
@@ -223,15 +238,12 @@ export default function BookReader() {
 
   const geo = useMemo(() => {
     if (!stage.w || typeof document === 'undefined') return null;
-    return measure(dims.w - 60, dims.h - 84, fontSize);
+    return measure(dims.w - PAD.x * 2, dims.h - PAD.top - PAD.bottom, fontSize);
   }, [dims.w, dims.h, fontSize, stage.w]);
 
   const pages = useMemo(() => {
     if (!geo || !paras.length) return [];
-    let f = 0.97;
-    let pg = paginate(paras, geo.lines, geo.cpl * f);
-    for (let k = 0; k < 6 && overflows(pg, geo); k++) { f *= 0.96; pg = paginate(paras, geo.lines, geo.cpl * f); }
-    return pg;
+    return paginate(paras, geo);
   }, [geo, paras]);
   const total = pages.length ? pages.length + 2 : 0; // cover + text + end
 
@@ -368,7 +380,7 @@ export default function BookReader() {
   const title = book?.title || '';
 
   // ---------- what is drawn ----------
-  const faceProps = { theme, fontSize, lineH: geo ? geo.lineH : Math.round(fontSize * 1.62), title, w: dims.w, h: dims.h };
+  const faceProps = { theme, fontSize, lineH: geo ? geo.lineH : Math.round(fontSize * 1.5), title, w: dims.w, h: dims.h };
   let under = null;
   let leaf = null;
   let q = 0;

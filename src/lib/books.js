@@ -35,7 +35,7 @@ export function continueReading() {
     .sort((a, b) => b.at - a.at);
 }
 
-export const getPrefs = () => ({ size: 19, theme: 'dark', ...read(PREFS_KEY, {}) });
+export const getPrefs = () => ({ fontSize: 19, theme: 'dark', ...read(PREFS_KEY, {}) });
 export const setPrefs = (p) => write(PREFS_KEY, p);
 
 // fetch + JSON with automatic retries, so a busy book server never shows an error on the first hiccup.

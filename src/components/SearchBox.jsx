@@ -27,6 +27,7 @@ async function fetchSuggestions(term) {
 export default function SearchBox({ size = "nav", initial = "" }) {
   const navigate = useNavigate();
   const boxRef = useRef(null);
+  const inputRef = useRef(null);
   const [q, setQ] = useState(initial);
   const [items, setItems] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -84,6 +85,9 @@ export default function SearchBox({ size = "nav", initial = "" }) {
     const term = q.trim();
     if (!term) return;
     setOpen(false);
+    setItems([]);
+    setLoading(false);
+    inputRef.current?.blur();
     navigate(`/search?q=${encodeURIComponent(term)}`);
   };
 
@@ -122,6 +126,7 @@ export default function SearchBox({ size = "nav", initial = "" }) {
       <form onSubmit={onSubmit} role="search">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground pointer-events-none" />
         <input
+          ref={inputRef}
           type="search"
           enterKeyHint="search"
           autoComplete="off"

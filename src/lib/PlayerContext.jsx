@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { useSettings } from '@/lib/useSettings';
+import { cachedJson } from '@/lib/cache';
 
 const PlayerContext = createContext(null);
 
@@ -385,6 +386,23 @@ export function PlayerProvider({ children }) {
     errCountRef.current = 0;
     fbRef.current = '';
     playAt(idx);
+
+    // Played a single song (not from a list)? Line up more songs by the same artist, so music keeps going.
+    if (q.length <= 1 && track.artist) {
+      const key = track.artist.toLowerCase().split(/[,&]| feat\.?| ft\.?/)[0].trim();
+      cachedJson('/api/searchMusic', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: track.artist, mode: 'search', maxResults: 25 }) }, 10 * 60 * 1000)
+        .then((res) => {
+          const cur = currentRef.current;
+          if (!cur || (cur.videoId !== track.videoId && cur.catalogId !== track.videoId)) return; // moved on to another song
+          if (queueRef.current.length > 1) return;
+          const more = (res.tracks || []).filter((x) => x.videoId !== track.videoId && (x.artist || '').toLowerCase().includes(key)).slice(0, 15);
+          if (!more.length) return;
+          const nq = [queueRef.current[0] || track, ...more];
+          queueRef.current = nq;
+          setQueue(nq);
+        })
+        .catch(() => {});
+    }
   }, [playAt]);
 
   // Load a track WITHOUT autoplaying (phones block autoplay without a tap).

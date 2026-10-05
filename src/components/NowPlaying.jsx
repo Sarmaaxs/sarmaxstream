@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
+import { cachedJson } from '@/lib/cache';
+import { useAlbumColor } from '@/lib/useAlbumColor';
 import { usePlayer } from '@/lib/PlayerContext';
 import { useMusicLibrary } from '@/lib/useMusicLibrary';
 import ShareButton from '@/components/ShareButton';
 import LyricsView from '@/components/LyricsView';
 // base44 removed — using fetch to /api/getLyrics instead
-import { ChevronDown, Play, Pause, SkipBack, SkipForward, Repeat, Shuffle, Heart } from 'lucide-react';
+import { ChevronDown, Play, Pause, SkipBack, SkipForward, Repeat, Shuffle, Heart, Loader2 } from 'lucide-react';
 
 const LYRICS_CACHE_PREFIX = 'sarmax_lyrics_v2:';
 const OFFSET_PREFIX = 'sarmax_lyric_offset:';
@@ -25,6 +27,34 @@ export default function NowPlaying() {
   const [loadingL, setLoadingL] = useState(false);
   const [failed, setFailed] = useState(false);
   const [offset, setOffset] = useState(0);
+  const [tab, setTab] = useState('lyrics'); // 'lyrics' | 'more'
+  const [more, setMore] = useState([]);
+  const [moreLoading, setMoreLoading] = useState(false);
+  const [closing, setClosing] = useState(false);
+  const color = useAlbumColor(t?.thumbnail, `${t?.title || ''}${t?.artist || ''}`);
+
+  const close = () => {
+    if (closing) return;
+    setClosing(true);
+    setTimeout(() => { setClosing(false); p.closeNowPlaying(); }, 260);
+  };
+
+  // "More by this artist" — songs by the same artist, one tap to play.
+  useEffect(() => {
+    if (!p.nowPlayingOpen || !t || tab !== 'more' || !t.artist) return undefined;
+    let alive = true;
+    setMoreLoading(true);
+    (async () => {
+      try {
+        const res = await cachedJson('/api/searchMusic', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: t.artist, mode: 'search', maxResults: 25 }) }, 10 * 60 * 1000);
+        const key = t.artist.toLowerCase().split(/[,&]| feat\.?| ft\.?/)[0].trim();
+        const same = (res.tracks || []).filter((x) => x.videoId !== t.videoId && x.videoId !== t.catalogId && (x.artist || '').toLowerCase().includes(key));
+        if (alive) setMore(same);
+      } catch { if (alive) setMore([]); }
+      if (alive) setMoreLoading(false);
+    })();
+    return () => { alive = false; };
+  }, [p.nowPlayingOpen, t?.videoId, t?.artist, tab]);
 
   // Remember a per-song lyric offset for next visit.
   useEffect(() => {
@@ -95,16 +125,17 @@ export default function NowPlaying() {
   const hasSynced = lyricLines.length > 0;
 
   return (
-    <div className="fixed inset-x-0 top-0 z-[60] flex flex-col h-[100dvh]" style={{ height: '100dvh' }}>
-      <img src={t.thumbnail} alt="" className="absolute inset-0 w-full h-full object-cover blur-3xl scale-150 opacity-25" />
-      <div className="absolute inset-0 bg-black/75" />
+    <div className={`fixed inset-x-0 top-0 z-[60] flex flex-col h-[100dvh] overflow-hidden ${closing ? 'np-out' : 'np-in'}`} style={{ height: '100dvh', background: '#000' }}>
+      {/* 100% solid: a black base, then the song's colour, then a fade to black at the bottom */}
+      <div className="absolute inset-0" style={{ backgroundColor: color, transition: 'background-color 1000ms ease' }} />
+      <div className="absolute inset-0" style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0.10) 0%, rgba(0,0,0,0.45) 55%, rgba(0,0,0,0.92) 100%)' }} />
       <div
         className="relative flex flex-col h-full max-w-4xl mx-auto w-full px-4 sm:px-5 gap-3"
         style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 0.75rem)', paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 0.75rem)' }}
       >
         <div className="flex items-center justify-between shrink-0">
-          <button onClick={p.closeNowPlaying} aria-label="Close" className="p-3 -m-1 rounded-full glass text-white/80 hover:text-white"><ChevronDown size={22} /></button>
-          <div className="text-xs uppercase tracking-wide text-white/40">Now Playing</div>
+          <button onClick={close} aria-label="Close" className="p-3 -m-1 rounded-full glass text-white/80 hover:text-white"><ChevronDown size={22} /></button>
+          <div className="text-xs uppercase tracking-wide text-white/70">Now Playing</div>
           <button onClick={() => lib.toggleSave(t)} aria-label="Like" className={`p-3 -m-1 rounded-full glass ${saved ? 'text-primary' : 'text-white/70'}`}>
             <Heart size={20} fill={saved ? 'currentColor' : 'none'} />
           </button>
@@ -121,14 +152,38 @@ export default function NowPlaying() {
             </div>
           </div>
 
-          {/* Lyrics fill whatever space is left, so controls never get pushed off-screen */}
-          <div className="md:w-1/2 flex flex-col flex-1 min-h-0 glass rounded-2xl p-4">
-            <LyricsView lines={lyricLines} plain={lyricPlain} currentTime={p.currentTime} loading={loadingL || !lyricsReady} failed={failed} offset={offset} />
-            {hasSynced && (
-              <div className="shrink-0 flex items-center justify-center gap-3 pt-2 text-[11px] text-white/45">
-                <button onClick={() => nudge(-0.5)} className="px-3 py-1.5 rounded-full glass">Lyrics later</button>
-                <span className="tabular-nums w-12 text-center">{offset > 0 ? '+' : ''}{offset.toFixed(1)}s</span>
-                <button onClick={() => nudge(0.5)} className="px-3 py-1.5 rounded-full glass">Lyrics earlier</button>
+          {/* Lyrics / More by artist fill whatever space is left, so controls never get pushed off-screen */}
+          <div className="md:w-1/2 flex flex-col flex-1 min-h-0 rounded-2xl p-2 md:p-4">
+            <div className="shrink-0 flex items-center justify-center gap-2 pb-2">
+              {[['lyrics', 'Lyrics'], ['more', t.artist ? `More by ${t.artist}` : 'More']].map(([k, label]) => (
+                <button key={k} onClick={() => setTab(k)} className={`max-w-[60%] truncate px-4 py-1.5 rounded-full text-xs font-semibold transition ${tab === k ? 'bg-white text-black' : 'bg-white/15 text-white hover:bg-white/25'}`}>{label}</button>
+              ))}
+            </div>
+            {tab === 'lyrics' ? (
+              <>
+                <LyricsView lines={lyricLines} plain={lyricPlain} currentTime={p.currentTime} loading={loadingL || !lyricsReady} failed={failed} offset={offset} onSeek={p.seek} />
+                {hasSynced && (
+                  <div className="shrink-0 flex items-center justify-center gap-3 pt-2 text-[11px] text-white/70">
+                    <button onClick={() => nudge(-0.5)} className="px-3 py-1.5 rounded-full bg-white/15">Lyrics later</button>
+                    <span className="tabular-nums w-12 text-center">{offset > 0 ? '+' : ''}{offset.toFixed(1)}s</span>
+                    <button onClick={() => nudge(0.5)} className="px-3 py-1.5 rounded-full bg-white/15">Lyrics earlier</button>
+                  </div>
+                )}
+              </>
+            ) : (
+              <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar overscroll-contain space-y-1">
+                {moreLoading && <div className="flex items-center gap-2 text-white/70 text-sm p-3"><Loader2 size={16} className="animate-spin" /> Finding songs…</div>}
+                {!moreLoading && more.length === 0 && <div className="text-white/70 text-sm p-3">No other songs found for this artist.</div>}
+                {more.map((m) => (
+                  <button key={m.videoId} onClick={() => p.playTrack(m, [m, ...more.filter((x) => x.videoId !== m.videoId)])} className="w-full flex items-center gap-3 p-2 rounded-xl hover:bg-white/10 text-left">
+                    <img src={m.thumbnail} alt="" className="w-11 h-11 rounded-lg object-cover shrink-0" />
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm font-medium text-white">{m.title}</div>
+                      <div className="truncate text-xs text-white/70">{m.artist}</div>
+                    </div>
+                    <Play size={16} className="text-white/70 shrink-0" />
+                  </button>
+                ))}
               </div>
             )}
           </div>

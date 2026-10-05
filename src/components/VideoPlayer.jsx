@@ -29,11 +29,17 @@ export default function VideoPlayer({ open, onClose, mediaType, tmdbId, title, p
   const recordedRef = useRef(false);
 
   useEffect(() => {
-    if (!open) {
-      setLoading(true);
-      recordedRef.current = false;
-    }
+    setLoading(true); // show the spinner again when the movie / episode changes
+    if (!open) recordedRef.current = false;
   }, [open, tmdbId, season, episode]);
+
+  // Esc closes the player (same as the anime player).
+  useEffect(() => {
+    if (!open) return undefined;
+    const onKey = (e) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, onClose]);
 
   useEffect(() => {
     if (!open) return;
@@ -60,10 +66,12 @@ export default function VideoPlayer({ open, onClose, mediaType, tmdbId, title, p
   const s = season || 1;
   const e = episode || 1;
   const id = encodeURIComponent(tmdbId);
+  // VidLink's own modern player (player=default) with its newer icon set, in the site's red.
+  const look = "primaryColor=e5484d&secondaryColor=a2a2a2&iconColor=ffffff&icons=vid&player=default&title=true&poster=true&autoplay=true";
   const src =
     mediaType === "tv"
-      ? `https://vidlink.pro/tv/${id}/${s}/${e}`
-      : `https://vidlink.pro/movie/${id}`;
+      ? `https://vidlink.pro/tv/${id}/${s}/${e}?${look}&nextbutton=true`
+      : `https://vidlink.pro/movie/${id}?${look}`;
 
   return (
     <div className="fixed inset-0 z-[100] bg-black/95 flex flex-col pt-safe pb-safe">

@@ -265,3 +265,11 @@
 @media (prefers-reduced-motion: reduce) {
   .auth-blob, .auth-enter, .auth-head > *, .auth-icon, .auth-icon::after, .auth-glow, .auth-glow::before, .auth-card > *, .auth-card form > *, .auth-card button[type="submit"]::after, .auth-card [class*="bg-red-500/10"] { animation: none !important; }
 }
+
+
+/* ====== Full-screen player: slides up from the mini player, slides down when closed ====== */
+@keyframes np-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
+@keyframes np-down { from { transform: translateY(0); } to { transform: translateY(100%); } }
+.np-in { animation: np-up 320ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.np-out { animation: np-down 260ms cubic-bezier(0.4, 0, 1, 1) both; }
+@media (prefers-reduced-motion: reduce) { .np-in, .np-out { animation: none; } }

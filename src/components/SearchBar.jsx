@@ -14,19 +14,24 @@ export default function SearchBar({ initial = '' }) {
   const player = usePlayer();
   const boxRef = useRef(null);
   const timer = useRef(null);
+  const typed = useRef(false); // the list only opens because the person typed, never on page load or after Enter
+  const reqId = useRef(0);
+  const inputRef = useRef(null);
 
   useEffect(() => {
     const v = q.trim();
-    if (v.length < 2) { setResults([]); setOpen(false); return; }
     clearTimeout(timer.current);
+    if (v.length < 2 || !typed.current) { setResults([]); setOpen(false); setLoading(false); return undefined; }
+    const my = ++reqId.current;
     timer.current = setTimeout(async () => {
       setLoading(true);
       try {
         const res = await cachedJson('/api/searchMusic', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ query: v, mode: 'search', maxResults: 6 }) }, 10 * 60 * 1000);
+        if (my !== reqId.current || !typed.current) return; // Enter was pressed or a newer search started
         setResults(res.tracks || []);
         setOpen(true);
       } catch {}
-      setLoading(false);
+      if (my === reqId.current) setLoading(false);
     }, 350);
     return () => clearTimeout(timer.current);
   }, [q]);
@@ -40,24 +45,33 @@ export default function SearchBar({ initial = '' }) {
   const submit = (e) => {
     e.preventDefault();
     const v = q.trim();
-    if (v) { setOpen(false); navigate(`/music/search?q=${encodeURIComponent(v)}`); }
+    if (!v) return;
+    typed.current = false;      // stop any pending/in-flight suggestion lookup from re-opening the list
+    reqId.current += 1;
+    clearTimeout(timer.current);
+    setOpen(false);
+    setResults([]);
+    setLoading(false);
+    inputRef.current?.blur();
+    navigate(`/music/search?q=${encodeURIComponent(v)}`);
   };
 
-  const pick = (t) => { player.playTrack(t, results); setOpen(false); };
+  const pick = (t) => { typed.current = false; player.playTrack(t, results); setOpen(false); };
 
   return (
     <div className="relative w-full max-w-xl" ref={boxRef}>
       <form onSubmit={submit} className="relative">
         <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40" />
         <input
+          ref={inputRef}
           value={q}
-          onChange={(e) => setQ(e.target.value)}
+          onChange={(e) => { typed.current = true; setQ(e.target.value); }}
           onFocus={() => results.length && setOpen(true)}
           placeholder="Search songs…"
           className="w-full glass rounded-full pl-12 pr-10 py-3 text-sm text-white placeholder:text-white/40 outline-none focus:border-primary/60 border border-white/10"
         />
         {q && (
-          <button type="button" onClick={() => { setQ(''); setResults([]); setOpen(false); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white">
+          <button type="button" onClick={() => { typed.current = false; setQ(''); setResults([]); setOpen(false); }} className="absolute right-3 top-1/2 -translate-y-1/2 text-white/40 hover:text-white">
             <X size={16} />
           </button>
         )}

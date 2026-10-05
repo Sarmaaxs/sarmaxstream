@@ -24,7 +24,9 @@ export default function Navbar() {
   // On /music pages the navbar search must search MUSIC, not movies.
   // (/music and /music/search already show their own music search bar.)
   const isMusic = location.pathname.startsWith("/music");
-  const pageHasOwnSearch = location.pathname === "/music" || location.pathname === "/music/" || location.pathname === "/music/search";
+  const pageHasOwnSearch = location.pathname === "/music" || location.pathname === "/music/" || location.pathname === "/music/search" || location.pathname.startsWith("/music/artist");
+  // keep the top search field filled with what you searched for
+  const navQ = location.pathname === "/search" ? new URLSearchParams(location.search).get("q") || "" : "";
 
   const links = [
   { label: "Home", to: "/" },
@@ -59,7 +61,7 @@ export default function Navbar() {
         </nav>
 
         <div className="hidden sm:block flex-1 max-w-md ml-auto">
-          {isMusic ? (pageHasOwnSearch ? null : <SearchBar />) : <SearchBox size="nav" />}
+          {isMusic ? (pageHasOwnSearch ? null : <SearchBar />) : <SearchBox size="nav" initial={navQ} />}
         </div>
 
         <div className="flex items-center gap-2 ml-auto sm:ml-2">
