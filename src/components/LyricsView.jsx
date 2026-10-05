@@ -2,8 +2,8 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 
 // Spotify-style lyrics: the line being sung is big and bright, the lines around it are
-// blurred more the further away they are. Touch or scroll to read freely (blur turns off for a moment),
-// tap a line to jump to it.
+// blurred more the further away they are. The blur stays on while you scroll, on every line
+// (near and far), so it works the same for every song. Tap a line to jump to it.
 export default function LyricsView({ lines, plain, currentTime, loading, failed, offset = 0, onSeek }) {
   const containerRef = useRef(null);
   const lineRefs = useRef([]);
@@ -57,9 +57,9 @@ export default function LyricsView({ lines, plain, currentTime, loading, failed,
         {lines.map((l, i) => {
           const active = i === activeIdx;
           const dist = activeIdx < 0 ? i + 1 : Math.abs(i - activeIdx);
-          const near = dist <= 6;
-          const blur = browsing || active ? 0 : near ? Math.min(4.5, 0.8 + dist * 0.7) : 0;
-          const opacity = browsing ? 0.8 : active ? 1 : near ? Math.max(0.35, 0.78 - dist * 0.09) : 0.25;
+          // every non-active line is blurred (more the further it is), scrolling doesn't change that
+          const blur = active ? 0 : Math.min(4.5, 0.8 + dist * 0.7);
+          const opacity = active ? 1 : Math.max(0.28, 0.78 - dist * 0.09);
           return (
             <p
               key={i}
