@@ -6,9 +6,12 @@ import { idbGet, idbSet } from '@/lib/cache';
 
 const THEMES = {
   dark:  { bg: '#0a0a0c', text: '#dcd8d0', muted: '#8a8780', paper: '#17171a', back: '#101012', edge: ['#1d1d21', '#26262b', '#303036'] },
-  sepia: { bg: '#2b2118', text: '#3b2f2f', muted: '#8a7660', paper: '#f4ead2', back: '#e9dcbc', edge: ['#e8dcc0', '#d8c9a6', '#c7b58c'] },
+  slate: { bg: '#10131a', text: '#1b1f27', muted: '#6b7280', paper: '#e8ecf2', back: '#dde2ea', edge: ['#e3e7ee', '#d3d9e2', '#c3cad6'] },
   light: { bg: '#d9d9d6', text: '#1d1d1d', muted: '#77777a', paper: '#fdfdfb', back: '#efefea', edge: ['#ececea', '#dcdcd8', '#cbcbc6'] },
 };
+
+// Clean modern font (the phone's own UI font). Used for measuring AND showing pages, so they always match.
+const BOOK_FONT = 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif';
 
 const HEAD_RE = /^(chapter|book|part|volume|act|scene|section|canto|prologue|epilogue|preface|contents|introduction|letter|stave)\b/i;
 
@@ -33,7 +36,7 @@ const PAD = { x: 18, top: 28, bottom: 32 };
 function makeBox(g) {
   const box = document.createElement('div');
   box.lang = 'en';
-  box.style.cssText = `position:absolute;visibility:hidden;left:-9999px;top:0;width:${g.textW}px;overflow:hidden;font:${g.fontSize}px/${g.lineH}px Georgia,"Times New Roman",serif;text-align:justify;hyphens:auto;`;
+  box.style.cssText = `position:absolute;visibility:hidden;left:-9999px;top:0;width:${g.textW}px;overflow:hidden;font:${g.fontSize}px/${g.lineH}px ${BOOK_FONT};text-align:left;`;
   document.body.appendChild(box);
   return box;
 }
@@ -42,7 +45,7 @@ function makeEl(kind, text, cont, lineH) {
   const el = document.createElement(kind === 'head' ? 'div' : 'p');
   el.textContent = text;
   el.style.cssText = kind === 'head'
-    ? `text-align:center;font-variant:small-caps;letter-spacing:0.08em;font-weight:600;margin:${lineH}px 0`
+    ? `text-align:center;font-weight:700;margin:${lineH}px 0`
     : `margin:0;text-indent:${cont ? 0 : '1.5em'}`;
   return el;
 }
@@ -123,7 +126,7 @@ const Page = React.memo(function Page({ data, num, theme, fontSize, lineH, title
       style={{
         position: 'absolute', inset: 0, width: w, height: h, background: theme.paper, color: theme.text,
         borderRadius: side === 'back' ? '10px 3px 3px 10px' : '3px 10px 10px 3px', overflow: 'hidden',
-        fontFamily: 'Georgia, "Times New Roman", serif',
+        fontFamily: BOOK_FONT,
       }}
     >
       {/* paper texture + spine shadow */}
@@ -133,22 +136,22 @@ const Page = React.memo(function Page({ data, num, theme, fontSize, lineH, title
           {data.cover ? <img src={data.cover} alt="" style={{ width: '46%', maxHeight: '38%', objectFit: 'cover', borderRadius: 4, boxShadow: '0 8px 24px rgba(0,0,0,0.35)', marginBottom: 22 }} /> : null}
           <div style={{ fontSize: Math.round(fontSize * 1.55), fontWeight: 700, lineHeight: 1.2 }}>{data.title}</div>
           <div style={{ width: 48, height: 1, background: theme.muted, margin: '16px 0' }} />
-          <div style={{ fontSize: Math.round(fontSize * 0.95), fontStyle: 'italic', color: theme.muted }}>{data.author}</div>
+          <div style={{ fontSize: Math.round(fontSize * 0.95), color: theme.muted }}>{data.author}</div>
           <div style={{ fontSize: 12, color: theme.muted, marginTop: 28, letterSpacing: '0.12em' }}>SWIPE TO OPEN</div>
         </div>
       )}
       {data && data.type === 'end' && (
         <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: '0 12%', color: theme.muted }}>
-          <div style={{ fontSize: Math.round(fontSize * 1.4), fontStyle: 'italic' }}>The End</div>
+          <div style={{ fontSize: Math.round(fontSize * 1.4), fontWeight: 600 }}>The End</div>
           {data.truncated && <div style={{ fontSize: 13, marginTop: 14, fontFamily: 'system-ui, sans-serif' }}>This is a very long book, so only the first part is shown here.</div>}
         </div>
       )}
       {data && data.type === 'text' && (
         <>
           <div style={{ position: 'absolute', top: 9, left: pad.x, right: pad.x, textAlign: 'center', fontSize: 11, letterSpacing: '0.14em', textTransform: 'uppercase', color: theme.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</div>
-          <div lang="en" style={{ position: 'absolute', top: pad.top, left: pad.x, right: pad.x, bottom: pad.bottom, overflow: 'hidden', fontSize, lineHeight: `${lineH}px`, textAlign: 'justify', hyphens: 'auto' }}>
+          <div lang="en" style={{ position: 'absolute', top: pad.top, left: pad.x, right: pad.x, bottom: pad.bottom, overflow: 'hidden', fontSize, lineHeight: `${lineH}px`, textAlign: 'left' }}>
             {data.segs.map((s, i) => (s.kind === 'head'
-              ? <div key={i} style={{ textAlign: 'center', fontVariant: 'small-caps', letterSpacing: '0.08em', fontWeight: 600, margin: `${lineH}px 0 ${lineH}px` }}>{s.text}</div>
+              ? <div key={i} style={{ textAlign: 'center', fontWeight: 700, margin: `${lineH}px 0 ${lineH}px` }}>{s.text}</div>
               : <p key={i} style={{ margin: 0, textIndent: s.cont ? 0 : '1.5em' }}>{s.text}</p>))}
           </div>
           <div style={{ position: 'absolute', bottom: 9, left: 0, right: 0, textAlign: 'center', fontSize: 11, color: theme.muted }}>{num}</div>
