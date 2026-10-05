@@ -1,9 +1,7 @@
 // api/getLyrics.js — REPLACES base44/functions/getLyrics/entry.ts
 // Deploy target: same as searchMusic.js (Vercel serverless / Railway+Express).
-// No Base44 coupling to remove here beyond the export signature — this file
-// was already just proxying two free third-party lyrics APIs (LRCLIB,
-// lyrics.ovh) and returning whatever they send back to your own frontend.
-// No env vars needed; neither API requires a key.
+// Sources: LRCLIB (many lookups at once), NetEase (second synced source), lyrics.ovh (written only).
+// No env vars needed; none of them require a key.
 
 import { rateLimit } from './_guard.js';
 
@@ -42,11 +40,11 @@ function splitArtistFromTitle(title) {
   return null;
 }
 
-async function fetchWithTimeout(url, ms) {
+async function fetchWithTimeout(url, ms, opts = {}) {
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), ms);
   try {
-    const r = await fetch(url, { signal: controller.signal });
+    const r = await fetch(url, { ...opts, signal: controller.signal });
     clearTimeout(id);
     return r;
   } catch (e) {
@@ -77,52 +75,115 @@ function parseSynced(synced) {
   return lines;
 }
 
-// Pick the LRCLIB candidate whose length is closest to the playing video.
-// Wrong version (album vs. video vs. live) is the #1 cause of "not synced".
-function pickBest(arr, duration) {
-  const usable = arr.filter((d) => d && (d.syncedLyrics || d.plainLyrics));
-  if (!usable.length) return null;
-  const synced = usable.filter((d) => d.syncedLyrics);
-  const pool = synced.length ? synced : usable;
-  if (duration > 0) {
-    let best = null;
-    let bestDiff = Infinity;
-    for (const d of pool) {
-      const diff = Math.abs((Number(d.duration) || 0) - duration);
-      if (diff < bestDiff) { best = d; bestDiff = diff; }
-    }
-    return { item: best, diff: bestDiff };
-  }
-  return { item: pool[0], diff: 0 };
-}
-
-async function tryLrclibGet(artist, title, duration, ms) {
+// All LRCLIB lookups run together and every result is collected, so we can pick the best
+// SYNCED one instead of settling for the first (often written-only) hit.
+async function lrclibGet(artist, title, duration, ms) {
   try {
     let url = `https://lrclib.net/api/get?artist_name=${encodeURIComponent(artist)}&track_name=${encodeURIComponent(title)}`;
     if (duration > 0) url += `&duration=${Math.round(duration)}`;
     const r = await fetchWithTimeout(url, ms);
-    if (!r.ok) return null;
+    if (!r.ok) return [];
     const d = await r.json();
-    if (!d) return null;
-    return { synced: d.syncedLyrics || '', plain: d.plainLyrics || '' };
-  } catch { return null; }
+    return d && (d.syncedLyrics || d.plainLyrics) ? [d] : [];
+  } catch { return []; }
 }
 
-async function tryLrclibSearch(q, duration, ms) {
+async function lrclibSearch(qs, ms) {
   try {
-    const r = await fetchWithTimeout(`https://lrclib.net/api/search?q=${encodeURIComponent(q)}`, ms);
-    if (!r.ok) return null;
+    const r = await fetchWithTimeout(`https://lrclib.net/api/search?${qs}`, ms);
+    if (!r.ok) return [];
     const arr = await r.json();
-    if (!Array.isArray(arr) || !arr.length) return null;
-    const pick = pickBest(arr, duration);
-    if (!pick || !pick.item) return null;
-    // If we know the length and the best candidate is >8s off, it's a different
-    // recording: its timestamps would drift, so only use it as plain text.
-    if (duration > 0 && pick.diff > 8 && pick.item.syncedLyrics) {
-      return { synced: '', plain: pick.item.plainLyrics || '' };
+    return Array.isArray(arr) ? arr : [];
+  } catch { return []; }
+}
+
+async function gatherLrclib(artists, titles, duration, ms) {
+  const jobs = [];
+  for (const a of artists.slice(0, 2)) {
+    for (const t of titles.slice(0, 2)) {
+      jobs.push(lrclibGet(a, t, duration, ms));
+      jobs.push(lrclibSearch(`track_name=${encodeURIComponent(t)}&artist_name=${encodeURIComponent(a)}`, ms));
+      jobs.push(lrclibSearch(`q=${encodeURIComponent(`${a} ${t}`)}`, ms));
     }
-    return { synced: pick.item.syncedLyrics || '', plain: pick.item.plainLyrics || '' };
-  } catch { return null; }
+  }
+  for (const t of titles.slice(0, 2)) jobs.push(lrclibSearch(`q=${encodeURIComponent(t)}`, ms));
+  const all = (await Promise.all(jobs)).flat();
+  const seen = new Set();
+  return all.filter((d) => {
+    if (!d || !(d.syncedLyrics || d.plainLyrics)) return false;
+    const k = d.id ?? `${d.trackName}|${d.artistName}|${d.duration}`;
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
+const norm = (x) => (x || '').toLowerCase().replace(/[^a-z0-9\u0600-\u06ff\u4e00-\u9fff]+/g, '');
+
+// Candidates that don't look like the requested song are ignored (the search is fuzzy).
+function looksRight(d, titles, artists) {
+  const name = norm(d.trackName || d.name);
+  const okTitle = !name || titles.some((t) => { const n = norm(t); return n && (name.includes(n) || n.includes(name)); });
+  if (!okTitle) return false;
+  const art = norm(d.artistName);
+  if (!art || !artists.length) return true;
+  return artists.some((a) => { const n = norm(a); return n && (art.includes(n) || n.includes(art)); });
+}
+
+const SYNC_TOLERANCE = 12; // seconds: further off than this is a different recording
+
+function pickSynced(cands, duration) {
+  const synced = cands.filter((d) => d.syncedLyrics);
+  if (!synced.length) return null;
+  if (!(duration > 0)) return synced[0];
+  let best = null;
+  let bestDiff = Infinity;
+  for (const d of synced) {
+    const diff = Math.abs((Number(d.duration) || 0) - duration);
+    if (diff < bestDiff) { best = d; bestDiff = diff; }
+  }
+  return bestDiff <= SYNC_TOLERANCE ? best : null;
+}
+
+function pickPlain(cands, duration) {
+  const withText = cands.filter((d) => d.plainLyrics);
+  if (!withText.length) return '';
+  if (!(duration > 0)) return withText[0].plainLyrics;
+  withText.sort((a, b) => Math.abs((Number(a.duration) || 0) - duration) - Math.abs((Number(b.duration) || 0) - duration));
+  return withText[0].plainLyrics;
+}
+
+// Second synced source (NetEase). No key needed. Used when LRCLIB has no synced match.
+async function tryNetease(artist, titles, duration, ms) {
+  try {
+    const headers = { Referer: 'https://music.163.com/', 'User-Agent': 'Mozilla/5.0' };
+    const q = `${artist} ${titles[0] || ''}`.trim();
+    const r = await fetchWithTimeout(
+      `https://music.163.com/api/search/get/web?csrf_token=&hlpretag=&hlposttag=&s=${encodeURIComponent(q)}&type=1&offset=0&total=true&limit=8`,
+      ms, { headers }
+    );
+    if (!r.ok) return '';
+    const data = await r.json().catch(() => null);
+    const songs = data?.result?.songs;
+    if (!Array.isArray(songs) || !songs.length) return '';
+    const ranked = songs
+      .map((x) => ({
+        id: x.id,
+        name: x.name,
+        artistName: (x.artists || x.ar || []).map((a) => a.name).join(' '),
+        duration: (Number(x.duration || x.dt) || 0) / 1000,
+      }))
+      .filter((x) => looksRight(x, titles, artist ? [artist] : []))
+      .sort((a, b) => (duration > 0 ? Math.abs(a.duration - duration) - Math.abs(b.duration - duration) : 0));
+    const top = ranked[0];
+    if (!top) return '';
+    if (duration > 0 && Math.abs(top.duration - duration) > SYNC_TOLERANCE) return '';
+    const lr = await fetchWithTimeout(`https://music.163.com/api/song/lyric?id=${top.id}&lv=1&kv=1&tv=-1`, ms, { headers });
+    if (!lr.ok) return '';
+    const ld = await lr.json().catch(() => null);
+    const lrc = ld?.lrc?.lyric || '';
+    return /\[\d{1,3}:\d{2}/.test(lrc) ? lrc : '';
+  } catch { return ''; }
 }
 
 async function tryOvh(artist, title, ms) {
@@ -154,38 +215,35 @@ export default async function handler(req, res) {
 
     const artists = Array.from(new Set([artist, ...titleArtists].filter(Boolean)));
 
-    const TOTAL_MS = 12000;
-    const PER_MS = 3500;
-    const start = Date.now();
+    const STAGE_MS = 6000;
+
+    // 1) LRCLIB (many lookups at once) and NetEase run in parallel
+    const [cands, neteaseLrc] = await Promise.all([
+      gatherLrclib(artists, cleanTitles, duration, STAGE_MS),
+      tryNetease(artists[0] || '', cleanTitles, duration, STAGE_MS),
+    ]);
+    const good = cands.filter((d) => looksRight(d, cleanTitles, artists));
+    const pool = good.length ? good : cands;
+
     let synced = '';
     let plain = '';
-
-    for (const a of artists) {
-      for (const t of cleanTitles) {
-        if (Date.now() - start >= TOTAL_MS) break;
-        const r = await tryLrclibGet(a, t, duration, Math.min(PER_MS, TOTAL_MS - (Date.now() - start)));
-        if (r && (r.synced || r.plain)) { synced = r.synced || ''; plain = r.plain || ''; break; }
-        if (Date.now() - start >= TOTAL_MS) break;
-        const s = await tryLrclibSearch(`${a} ${t}`, duration, Math.min(PER_MS, TOTAL_MS - (Date.now() - start)));
-        if (s && (s.synced || s.plain)) { synced = s.synced || ''; plain = s.plain || ''; break; }
-      }
-      if (synced || plain) break;
+    const bestSynced = pickSynced(pool, duration);
+    if (bestSynced) {
+      synced = bestSynced.syncedLyrics;
+      plain = bestSynced.plainLyrics || '';
+    } else if (neteaseLrc) {
+      synced = neteaseLrc;
     }
+    if (!plain) plain = pickPlain(pool, duration);
 
+    // 2) written lyrics as a last resort (the app will time them across the song)
     if (!synced && !plain) {
-      for (const t of cleanTitles) {
-        if (Date.now() - start >= TOTAL_MS) break;
-        const s = await tryLrclibSearch(t, duration, Math.min(PER_MS, TOTAL_MS - (Date.now() - start)));
-        if (s && (s.synced || s.plain)) { synced = s.synced || ''; plain = s.plain || ''; break; }
-      }
-    }
-
-    if (!plain) {
+      const start = Date.now();
       for (const a of artists) {
-        if (Date.now() - start >= TOTAL_MS) break;
+        if (Date.now() - start >= 6000) break;
         for (const t of cleanTitles) {
-          if (Date.now() - start >= TOTAL_MS) break;
-          const ovh = await tryOvh(a, t, Math.min(PER_MS, TOTAL_MS - (Date.now() - start)));
+          if (Date.now() - start >= 6000) break;
+          const ovh = await tryOvh(a, t, 3000);
           if (ovh) { plain = ovh; break; }
         }
         if (plain) break;
