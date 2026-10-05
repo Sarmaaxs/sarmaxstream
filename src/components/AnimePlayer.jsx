@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from "react";
 import { X, Loader2, AlertTriangle, ChevronLeft, ChevronRight } from "lucide-react";
 import { recordContinueWatching } from "@/lib/library";
-import { animeStreamUrl, AUDIO_OPTIONS, ANIME_SOURCES } from "@/lib/anime";
+import { AUDIO_OPTIONS, ANIME_SOURCES } from "@/lib/anime";
+import { useAutoServer } from "@/lib/useAutoServer";
 
 const SERVER_KEY = "sarmaxstream:anime-server";
 const SAFE_KEY = "sarmaxstream:anime-popup-block";
@@ -28,14 +29,7 @@ function readSafe() {
   return !IS_MOBILE;
 }
 
-function readServer() {
-  try {
-    const s = localStorage.getItem(SERVER_KEY);
-    return ANIME_SOURCES.some((x) => x.id === s) ? s : ANIME_SOURCES[0].id;
-  } catch {
-    return ANIME_SOURCES[0].id;
-  }
-}
+const SOURCE_IDS = ANIME_SOURCES.map((x) => x.id);
 
 // Small Sub / Dub switch, used here and on the anime detail page.
 export function AudioToggle({ value, onChange, className = "" }) {
@@ -78,7 +72,6 @@ export default function AnimePlayer({
   onEpisodeChange,
 }) {
   const [loading, setLoading] = useState(true);
-  const [server, setServer] = useState(readServer);
   const [safe, setSafe] = useState(readSafe);
 
   const toggleSafe = () => {
@@ -91,21 +84,21 @@ export default function AnimePlayer({
       /* ignore */
     }
   };
-  const src = animeStreamUrl(malId, episode, audio, server);
-
-  const changeServer = (id) => {
-    setServer(id);
-    try {
-      localStorage.setItem(SERVER_KEY, id);
-    } catch {
-      /* ignore */
-    }
-  };
+  const a = AUDIO_OPTIONS.includes(audio) ? audio : AUDIO_OPTIONS[0];
+  const urlFor = (i) => ANIME_SOURCES[i].url(encodeURIComponent(malId), encodeURIComponent(episode), a);
+  // If a server is down or never loads, the next one is tried automatically.
+  const { index, onLoad, failedAll, retry } = useAutoServer({
+    ids: SOURCE_IDS,
+    storageKey: SERVER_KEY,
+    resetKey: `${malId}|${episode}|${a}|${open}|${safe}`,
+    getSrc: urlFor,
+  });
+  const src = urlFor(index);
 
   // Show the spinner again whenever the episode / audio changes.
   useEffect(() => {
     if (open) setLoading(true);
-  }, [open, src]);
+  }, [open, src, safe]);
 
   // Save progress for "Continue Watching".
   useEffect(() => {
@@ -151,12 +144,18 @@ export default function AnimePlayer({
       </div>
 
       <div className="relative flex-1 w-full bg-black">
-        {loading && (
+        {loading && !failedAll && (
           <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-muted-foreground">
             <Loader2 className="w-8 h-8 animate-spin text-primary" />
             <span className="text-sm">Loading stream…</span>
           </div>
         )}
+        {failedAll ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center px-6">
+            <span className="text-sm text-muted-foreground">Couldn't load this episode right now.</span>
+            <button onClick={retry} className="h-9 px-5 rounded-full bg-primary text-primary-foreground text-xs font-semibold hover:brightness-110 transition">Try again</button>
+          </div>
+        ) : (
         <iframe
           key={`${src}|${safe}`}
           src={src}
@@ -167,33 +166,18 @@ export default function AnimePlayer({
           allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
           className="w-full h-full"
           style={{ border: 0 }}
-          onLoad={() => setLoading(false)}
+          onLoad={() => { setLoading(false); onLoad(); }}
         />
+        )}
       </div>
 
       <div className="px-4 sm:px-6 py-2 flex items-center gap-2 overflow-x-auto no-scrollbar border-t border-border/40">
-        <span className="shrink-0 text-xs text-muted-foreground mr-1">Server</span>
-        {ANIME_SOURCES.map((s) => (
-          <button
-            key={s.id}
-            type="button"
-            onClick={() => changeServer(s.id)}
-            aria-pressed={server === s.id}
-            className={`shrink-0 h-8 px-4 rounded-full text-xs font-semibold border transition ${
-              server === s.id
-                ? "bg-primary text-primary-foreground border-transparent"
-                : "bg-white/5 border-border/60 text-muted-foreground hover:text-foreground"
-            }`}
-          >
-            {s.label}
-          </button>
-        ))}
         <button
           type="button"
           onClick={toggleSafe}
           aria-pressed={safe}
           title="Stops the page itself from being redirected. New-tab pop-ups may still slip through; a browser ad blocker like uBlock Origin catches most of those."
-          className={`shrink-0 ml-2 h-8 px-4 rounded-full text-xs font-semibold border transition ${
+          className={`shrink-0 h-8 px-4 rounded-full text-xs font-semibold border transition ${
             safe
               ? "bg-white/10 border-primary/60 text-foreground"
               : "bg-white/5 border-border/60 text-muted-foreground hover:text-foreground"
@@ -202,7 +186,7 @@ export default function AnimePlayer({
           Block redirects: {safe ? "On" : "Off"}
         </button>
         <span className="shrink-0 ml-1 text-[11px] text-muted-foreground/70">
-          Not playing? Try another server, Sub/Dub, or turn redirect blocking off.
+          Not playing? Try Sub/Dub, or turn redirect blocking off.
         </span>
       </div>
 

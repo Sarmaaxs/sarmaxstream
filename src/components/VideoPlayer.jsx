@@ -1,15 +1,15 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Loader2, Maximize2, Minimize2, SkipBack, SkipForward, Star, ShieldCheck, Play } from "lucide-react";
+import { ArrowLeft, Loader2, SkipBack, SkipForward, Star, ShieldCheck, Play } from "lucide-react";
+import { useAutoServer } from "@/lib/useAutoServer";
 import { recordContinueWatching } from "@/lib/library";
 import { imageUrl } from "@/lib/tmdb";
 
 // ---------------------------------------------------------------------------
 // Watch page (MovieBox-style): the player on top, and underneath it the info,
-// episodes (series) and "More like this". Full screen shows only the video.
-// The picture itself comes from a third-party embed, so its inside buttons
-// belong to that embed — each Server below uses a different player, so pick
-// the one whose controls you like.
+// episodes (series) and "More like this".
+// The picture comes from a third-party embed. If a server is down or never loads,
+// the next one is tried automatically in the background (no server buttons).
 // ---------------------------------------------------------------------------
 
 const SERVER_KEY = "sarmaxstream:movie-server";
@@ -44,14 +44,7 @@ function readSafe() {
   } catch { /* ignore */ }
   return !IS_MOBILE; // some mobile embeds refuse to play inside a sandbox
 }
-function readServer() {
-  try {
-    const v = localStorage.getItem(SERVER_KEY);
-    return SERVERS.some((x) => x.id === v) ? v : SERVERS[0].id;
-  } catch { return SERVERS[0].id; }
-}
-
-const inFullscreen = () => !!(document.fullscreenElement || document.webkitFullscreenElement);
+const SERVER_IDS = SERVERS.map((x) => x.id);
 
 export default function VideoPlayer({
   open, onClose, mediaType, tmdbId, title, poster, backdrop, season, episode,
@@ -59,22 +52,22 @@ export default function VideoPlayer({
   similar = [], episodes = [], seasons = [], pageSeason, onSeasonChange, onEpisodeChange,
 }) {
   const navigate = useNavigate();
-  const boxRef = useRef(null);
-  const [loading, setLoading] = useState(true);
   const [safe, setSafe] = useState(readSafe);
-  const [server, setServer] = useState(readServer);
-  const [fs, setFs] = useState(false);       // real fullscreen
-  const [cssFs, setCssFs] = useState(false); // fallback for phones that can't fullscreen an element
 
   const tv = mediaType === "tv";
   const s = season || 1;
   const e = episode || 1;
   const id = encodeURIComponent(tmdbId);
-  const srv = SERVERS.find((x) => x.id === server) || SERVERS[0];
-  const src = srv.url(tv, id, s, e);
-
+  const { index, onLoad, failedAll, retry } = useAutoServer({
+    ids: SERVER_IDS,
+    storageKey: SERVER_KEY,
+    resetKey: `${tmdbId}|${mediaType}|${s}|${e}|${open}|${safe}`,
+    getSrc: (i) => SERVERS[i].url(tv, id, s, e),
+  });
+  const src = SERVERS[index].url(tv, id, s, e);
+  const [loading, setLoading] = useState(true);
   // spinner again when the movie / episode / server changes
-  useEffect(() => { setLoading(true); }, [open, src]);
+  useEffect(() => { setLoading(true); }, [open, src, safe]);
 
   // remember for "Continue Watching"
   useEffect(() => {
@@ -93,29 +86,13 @@ export default function VideoPlayer({
     return () => { document.body.style.overflow = prev; };
   }, [open]);
 
-  // Esc closes (but not while exiting fullscreen)
+  // Esc closes
   useEffect(() => {
     if (!open) return undefined;
-    const onKey = (ev) => {
-      if (ev.key !== "Escape") return;
-      if (cssFs) setCssFs(false);
-      else if (!inFullscreen()) onClose();
-    };
+    const onKey = (ev) => { if (ev.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [open, onClose, cssFs]);
-
-  useEffect(() => {
-    const onChange = () => setFs(inFullscreen());
-    document.addEventListener("fullscreenchange", onChange);
-    document.addEventListener("webkitfullscreenchange", onChange);
-    return () => {
-      document.removeEventListener("fullscreenchange", onChange);
-      document.removeEventListener("webkitfullscreenchange", onChange);
-    };
-  }, []);
-
-  useEffect(() => { if (!open) { setCssFs(false); if (inFullscreen()) (document.exitFullscreen || document.webkitExitFullscreen)?.call(document); } }, [open]);
+  }, [open, onClose]);
 
   const moreItems = useMemo(
     () => similar.map((it) => ({ ...it, _type: it.media_type || (it.first_air_date ? "tv" : "movie") })),
@@ -124,24 +101,6 @@ export default function VideoPlayer({
 
   if (!open) return null;
 
-  const toggleFs = () => {
-    const el = boxRef.current;
-    if (!el) return;
-    if (inFullscreen()) { (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
-    if (cssFs) { setCssFs(false); return; }
-    const req = el.requestFullscreen || el.webkitRequestFullscreen;
-    if (!req) { setCssFs(true); return; }
-    try {
-      const r = req.call(el);
-      const after = () => { try { window.screen.orientation?.lock?.("landscape").catch(() => {}); } catch { /* ignore */ } };
-      if (r && r.then) r.then(after).catch(() => setCssFs(true)); else after();
-    } catch { setCssFs(true); }
-  };
-
-  const changeServer = (sid) => {
-    setServer(sid);
-    try { localStorage.setItem(SERVER_KEY, sid); } catch { /* ignore */ }
-  };
   const toggleSafe = () => {
     const next = !safe;
     setSafe(next);
@@ -252,16 +211,19 @@ export default function VideoPlayer({
       <div className="mx-auto max-w-[1600px] px-0 sm:px-4 lg:px-6 py-0 sm:py-4 lg:grid lg:grid-cols-[minmax(0,1fr)_380px] lg:gap-6">
         {/* ---------- left: player + info ---------- */}
         <div className="min-w-0">
-          <div
-            ref={boxRef}
-            className={cssFs ? "fixed inset-0 z-[120] bg-black" : "relative w-full aspect-video bg-black sm:rounded-xl overflow-hidden"}
-          >
-            {loading && (
+          <div className="relative w-full aspect-video bg-black sm:rounded-xl overflow-hidden">
+            {loading && !failedAll && (
               <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-muted-foreground pointer-events-none">
                 <Loader2 className="w-8 h-8 animate-spin text-primary" />
                 <span className="text-sm">Loading stream…</span>
               </div>
             )}
+            {failedAll ? (
+              <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center px-6">
+                <span className="text-sm text-muted-foreground">Couldn't load the stream right now.</span>
+                <button onClick={retry} className="h-9 px-5 rounded-full bg-primary text-primary-foreground text-xs font-semibold hover:brightness-110 transition">Try again</button>
+              </div>
+            ) : (
             <iframe
               key={`${src}|${safe}`}
               src={src}
@@ -272,21 +234,13 @@ export default function VideoPlayer({
               sandbox={safe ? SANDBOX : undefined}
               className="absolute inset-0 w-full h-full"
               style={{ border: 0 }}
-              onLoad={() => setLoading(false)}
+              onLoad={() => { setLoading(false); onLoad(); }}
             />
-            {cssFs && (
-              <button onClick={() => setCssFs(false)} aria-label="Exit full screen" className="absolute top-3 left-3 z-10 w-10 h-10 rounded-full bg-black/60 text-white flex items-center justify-center">
-                <Minimize2 className="w-5 h-5" />
-              </button>
             )}
           </div>
 
           {/* controls under the player */}
-          <div className="px-3 sm:px-0 pt-3 flex flex-wrap items-center gap-2">
-            <button onClick={toggleFs} className="h-9 px-4 rounded-full bg-primary text-primary-foreground text-xs font-semibold flex items-center gap-2 hover:brightness-110 transition">
-              {fs || cssFs ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-              {fs || cssFs ? "Exit full screen" : "Full screen"}
-            </button>
+          <div className={`px-3 sm:px-0 flex flex-wrap items-center gap-2 ${tv ? "pt-3" : ""}`}>
             {tv && (
               <>
                 <button onClick={() => goEp(e - 1)} disabled={e <= 1} className="h-9 px-3 rounded-full bg-white/10 border border-white/15 text-xs font-semibold flex items-center gap-1.5 disabled:opacity-40 disabled:pointer-events-none hover:bg-white/15 transition">
@@ -297,21 +251,8 @@ export default function VideoPlayer({
                 </button>
               </>
             )}
-            <div className="flex items-center gap-1.5 ml-auto overflow-x-auto no-scrollbar">
-              {SERVERS.map((x) => (
-                <button
-                  key={x.id}
-                  onClick={() => changeServer(x.id)}
-                  aria-pressed={server === x.id}
-                  className={`shrink-0 h-9 px-3 rounded-full text-xs font-semibold border transition ${server === x.id ? "bg-white text-black border-transparent" : "bg-white/5 border-border/60 text-muted-foreground hover:text-foreground"}`}
-                >
-                  {x.label}
-                </button>
-              ))}
-            </div>
           </div>
           <div className="px-3 sm:px-0 pt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
-            <span>Not loading or no sound? Try another server.</span>
             <button onClick={toggleSafe} aria-pressed={safe} title="Stops the player from redirecting this page. Turn it off if a server refuses to play." className="flex items-center gap-1 hover:text-foreground transition">
               <ShieldCheck className="w-3.5 h-3.5" /> Block redirects: {safe ? "On" : "Off"}
             </button>
