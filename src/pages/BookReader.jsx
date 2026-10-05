@@ -28,7 +28,7 @@ function toParas(text) {
 }
 
 // Page text area inside the page (must match the <Page> layout below).
-const PAD = { x: 22, top: 34, bottom: 38 };
+const PAD = { x: 18, top: 28, bottom: 32 };
 
 function makeBox(g) {
   const box = document.createElement('div');
@@ -112,7 +112,7 @@ function paginate(paras, g) {
 
 // How many whole lines fit in the text area of a page.
 function measure(textW, textH, fontSize) {
-  const lineH = Math.round(fontSize * 1.5);
+  const lineH = Math.round(fontSize * 1.42);
   return { lineH, lines: Math.max(4, Math.floor(textH / lineH)), textW, textH, fontSize };
 }
 
@@ -145,13 +145,13 @@ const Page = React.memo(function Page({ data, num, theme, fontSize, lineH, title
       )}
       {data && data.type === 'text' && (
         <>
-          <div style={{ position: 'absolute', top: 12, left: pad.x, right: pad.x, textAlign: 'center', fontSize: 11, letterSpacing: '0.14em', textTransform: 'uppercase', color: theme.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</div>
+          <div style={{ position: 'absolute', top: 9, left: pad.x, right: pad.x, textAlign: 'center', fontSize: 11, letterSpacing: '0.14em', textTransform: 'uppercase', color: theme.muted, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{title}</div>
           <div lang="en" style={{ position: 'absolute', top: pad.top, left: pad.x, right: pad.x, bottom: pad.bottom, overflow: 'hidden', fontSize, lineHeight: `${lineH}px`, textAlign: 'justify', hyphens: 'auto' }}>
             {data.segs.map((s, i) => (s.kind === 'head'
               ? <div key={i} style={{ textAlign: 'center', fontVariant: 'small-caps', letterSpacing: '0.08em', fontWeight: 600, margin: `${lineH}px 0 ${lineH}px` }}>{s.text}</div>
               : <p key={i} style={{ margin: 0, textIndent: s.cont ? 0 : '1.5em' }}>{s.text}</p>))}
           </div>
-          <div style={{ position: 'absolute', bottom: 12, left: 0, right: 0, textAlign: 'center', fontSize: 12, color: theme.muted }}>{num}</div>
+          <div style={{ position: 'absolute', bottom: 9, left: 0, right: 0, textAlign: 'center', fontSize: 11, color: theme.muted }}>{num}</div>
         </>
       )}
     </div>
@@ -179,7 +179,7 @@ export default function BookReader() {
   const drag = useRef(null);
   const offRef = useRef(null); // text offset of the page being read (survives re-pagination)
   const theme = THEMES[prefs.theme] || THEMES.dark;
-  const fontSize = Math.max(14, Math.min(26, prefs.fontSize || prefs.size || 19));
+  const fontSize = Math.max(12, Math.min(26, prefs.fontSize || (prefs.size && prefs.size <= 20 ? prefs.size - 3 : 0) || 16));
 
   // ---------- load (cached in IndexedDB so reopening is instant) ----------
   useEffect(() => {
@@ -228,8 +228,8 @@ export default function BookReader() {
   // The page fills the whole reading area (like a real book held in the hand);
   // on wide screens it keeps a book-page shape and is centred.
   const dims = useMemo(() => {
-    const h = Math.max(300, stage.h - 8);
-    const maxW = Math.max(220, stage.w - 18); // leaves room for the page-block edge on the right
+    const h = Math.max(300, stage.h - 4);
+    const maxW = Math.max(220, stage.w - 12); // leaves room for the page-block edge on the right
     const w = Math.min(maxW, Math.round(h * 0.74), 720);
     return { w, h };
   }, [stage]);
@@ -380,7 +380,7 @@ export default function BookReader() {
   const title = book?.title || '';
 
   // ---------- what is drawn ----------
-  const faceProps = { theme, fontSize, lineH: geo ? geo.lineH : Math.round(fontSize * 1.5), title, w: dims.w, h: dims.h };
+  const faceProps = { theme, fontSize, lineH: geo ? geo.lineH : Math.round(fontSize * 1.42), title, w: dims.w, h: dims.h };
   let under = null;
   let leaf = null;
   let q = 0;
@@ -402,14 +402,15 @@ export default function BookReader() {
 
   return (
     <div className="fixed inset-0 flex flex-col select-none" style={{ background: `radial-gradient(ellipse at center, ${theme.bg}, #000 140%)`, color: theme.text }}>
-      <div className="shrink-0 flex items-center gap-2 px-3 py-2" style={{ background: 'rgba(0,0,0,0.25)' }}>
+      <div className="shrink-0 flex items-center gap-2 px-3 py-1.5" style={{ background: 'rgba(0,0,0,0.25)' }}>
         <button onClick={() => navigate('/books')} className="p-2 rounded-full" style={btn} aria-label="Back"><ArrowLeft size={18} /></button>
         <div className="flex-1 min-w-0">
           <div className="text-sm font-medium truncate" style={{ color: '#eee' }}>{book?.title || '…'}</div>
           <div className="text-xs truncate" style={{ color: '#aaa' }}>{book?.author || ''}</div>
         </div>
         <button onClick={() => { if (book) setSaved(toggleSavedBook(book)); }} className="p-2 rounded-full" style={btn} aria-label="Save"><Heart size={18} fill={saved ? 'currentColor' : 'none'} /></button>
-        <button onClick={() => updatePrefs({ fontSize: Math.max(14, fontSize - 1) })} className="p-2 rounded-full" style={btn} aria-label="Smaller text"><Minus size={16} /></button>
+        <button onClick={() => { const ks = Object.keys(THEMES); updatePrefs({ theme: ks[(ks.indexOf(prefs.theme) + 1) % ks.length] }); }} className="w-9 h-9 rounded-full border-2" style={{ background: theme.paper, borderColor: theme.muted }} aria-label="Change page colour" />
+        <button onClick={() => updatePrefs({ fontSize: Math.max(12, fontSize - 1) })} className="p-2 rounded-full" style={btn} aria-label="Smaller text"><Minus size={16} /></button>
         <button onClick={() => updatePrefs({ fontSize: Math.min(26, fontSize + 1) })} className="p-2 rounded-full" style={btn} aria-label="Bigger text"><Plus size={16} /></button>
       </div>
 
@@ -456,7 +457,7 @@ export default function BookReader() {
       </div>
 
       {status === 'ready' && total > 0 && (
-        <div className="shrink-0 px-3 pt-2" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 0.6rem)', background: 'rgba(0,0,0,0.25)' }}>
+        <div className="shrink-0 px-3 pt-1" style={{ paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 0.35rem)', background: 'rgba(0,0,0,0.25)' }}>
           <div className="flex items-center gap-3 mx-auto max-w-2xl">
             <button aria-label="Previous page" onClick={() => go(-1)} disabled={idx === 0} className="p-3 rounded-full disabled:opacity-30" style={btn}><ChevronLeft size={22} /></button>
             <div className="flex-1 min-w-0">
@@ -467,11 +468,6 @@ export default function BookReader() {
               </div>
             </div>
             <button aria-label="Next page" onClick={() => go(1)} disabled={idx >= total - 1} className="p-3 rounded-full disabled:opacity-30" style={btn}><ChevronRight size={22} /></button>
-          </div>
-          <div className="flex justify-center gap-2 mt-1">
-            {Object.keys(THEMES).map((k) => (
-              <button key={k} onClick={() => updatePrefs({ theme: k })} aria-label={`${k} theme`} className="w-6 h-6 rounded-full border-2" style={{ background: THEMES[k].paper, borderColor: prefs.theme === k ? '#e5484d' : 'rgba(128,128,128,0.5)' }} />
-            ))}
           </div>
         </div>
       )}

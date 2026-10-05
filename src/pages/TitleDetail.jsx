@@ -1,6 +1,6 @@
 import DownloadButton from "@/components/DownloadButton";
-import React, { useEffect, useState } from "react";
-import { useParams, Link } from "react-router-dom";
+import React, { useEffect, useRef, useState } from "react";
+import { useParams, Link, useLocation } from "react-router-dom";
 import { Play, Star, Clock, Calendar } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import BackButton from "@/components/BackButton";
@@ -12,6 +12,8 @@ import { tmdbDetails, tmdbSeason, backdropUrl, imageUrl } from "@/lib/tmdb";
 
 export default function TitleDetail() {
   const { type, id } = useParams();
+  const location = useLocation();
+  const autoplayRef = useRef(false);
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -19,6 +21,11 @@ export default function TitleDetail() {
   const [episodes, setEpisodes] = useState([]);
   const [seasonLoading, setSeasonLoading] = useState(false);
   const [player, setPlayer] = useState({ open: false, season: null, episode: null });
+
+  useEffect(() => {
+    setPlayer({ open: false, season: null, episode: null });
+    autoplayRef.current = !!(location.state && location.state.autoplay);
+  }, [type, id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     let active = true;
@@ -64,6 +71,18 @@ export default function TitleDetail() {
     };
   }, [type, id, season, data]);
 
+  useEffect(() => {
+    if (!autoplayRef.current || !data || String(data.id) !== String(id)) return; // wait until THIS title has loaded
+    if (type === "tv") {
+      if (!episodes.length) return;
+      autoplayRef.current = false;
+      setPlayer({ open: true, season, episode: episodes[0].episode_number || 1 });
+    } else {
+      autoplayRef.current = false;
+      setPlayer({ open: true, season: null, episode: null });
+    }
+  }, [data, episodes, type, season, id]);
+
   if (loading) {
     return (
       <div className="min-h-screen bg-background">
@@ -90,7 +109,11 @@ export default function TitleDetail() {
   const year = (data.release_date || data.first_air_date || "").slice(0, 4);
   const runtime = data.runtime || (data.episode_run_time && data.episode_run_time[0]);
   const cast = (data.credits?.cast || []).slice(0, 12);
-  const similar = (data.similar?.results || []).filter((r) => r.poster_path).slice(0, 20);
+  const seen = new Set();
+  const similar = [...(data.recommendations?.results || []), ...(data.similar?.results || [])]
+    .filter((r) => r.poster_path && !seen.has(r.id) && seen.add(r.id))
+    .map((r) => ({ ...r, media_type: r.media_type || type }))
+    .slice(0, 24);
   const seasons = (data.seasons || []).filter((s) => s.season_number > 0 || s.season_number === 0 && s.episode_count > 0);
 
   const play = () => {
@@ -271,6 +294,15 @@ export default function TitleDetail() {
         backdrop={data.backdrop_path}
         season={player.season}
         episode={player.episode}
+        overview={data.overview}
+        year={year}
+        rating={data.vote_average}
+        similar={similar}
+        episodes={episodes}
+        seasons={seasons}
+        pageSeason={season}
+        onSeasonChange={setSeason}
+        onEpisodeChange={(sn, en) => setPlayer({ open: true, season: sn, episode: en })}
       />
     </div>
   );
