@@ -52,7 +52,7 @@ export async function tmdbSearch(query, page = 1) {
 }
 
 export async function tmdbDetails(type, id) {
-  return tmdb(`${type}/${id}`, { append_to_response: "videos,similar,recommendations,credits" });
+  return tmdb(`${type}/${id}`, { append_to_response: "videos,similar,credits" });
 }
 
 export async function tmdbSeason(tvId, seasonNumber) {
