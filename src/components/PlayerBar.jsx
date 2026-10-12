@@ -13,11 +13,8 @@ function fmt(sec) {
   const s = Math.floor(sec % 60);
   return `${m}:${s.toString().padStart(2, '0')}`;
 }
-
 const stop = (e) => e.stopPropagation();
 
-// Spotify-style mini player: a small rounded card tinted with the song's colour.
-// Tap anywhere on it to open the full screen player.
 export default function PlayerBar() {
   const p = usePlayer();
   const lib = useMusicLibrary();
@@ -27,7 +24,6 @@ export default function PlayerBar() {
   if (!t) return null;
   const saved = lib.savedIds && lib.savedIds.has(t.videoId);
   const pct = p.duration ? Math.min(100, (p.currentTime / p.duration) * 100) : 0;
-
   return (
     <>
       <div className="player-bar-pos fixed left-0 right-0 z-40 px-2 pb-2 md:px-0 md:pb-0">
@@ -51,8 +47,6 @@ export default function PlayerBar() {
                 <div className="truncate text-xs text-white/70">{t.artist}</div>
               </div>
             </div>
-
-            {/* desktop: full controls + seek bar */}
             <div className="hidden md:flex flex-1 flex-col items-center gap-1 min-w-0" onClick={stop}>
               <div className="flex items-center gap-5">
                 <button onClick={p.toggleShuffle} className={p.shuffle ? 'text-primary' : 'text-white/70 hover:text-white'} aria-label="Shuffle"><Shuffle size={17} /></button>
@@ -69,23 +63,18 @@ export default function PlayerBar() {
                 <span className="w-9 tabular-nums">{fmt(p.duration)}</span>
               </div>
             </div>
-
-            {/* phone: heart + play/pause only, like Spotify */}
             <div className="flex items-center gap-1 md:hidden" onClick={stop}>
               <button onClick={() => lib.toggleSave(t)} aria-label="Like" className={`p-2 ${saved ? 'text-primary' : 'text-white/80'}`}><Heart size={20} fill={saved ? 'currentColor' : 'none'} /></button>
               <button onClick={p.togglePlay} aria-label="Play/Pause" className="p-2 text-white">
                 {p.resolving ? <Loader2 size={24} className="animate-spin" /> : p.isPlaying ? <Pause size={24} fill="currentColor" /> : <Play size={24} fill="currentColor" />}
               </button>
             </div>
-
             <div className="hidden md:flex items-center gap-2 w-[18%] justify-end" onClick={stop}>
               <button onClick={() => lib.toggleSave(t)} aria-label="Like" className={saved ? 'text-primary' : 'text-white/70 hover:text-white'}><Heart size={18} fill={saved ? 'currentColor' : 'none'} /></button>
               <button onClick={p.toggleMute} className="text-white/80 hover:text-white" aria-label="Mute">{p.muted ? <VolumeX size={18} /> : <Volume2 size={18} />}</button>
               <input type="range" min={0} max={100} value={p.muted ? 0 : p.volume} onChange={(e) => p.setVolume(Number(e.target.value))} className="w-24" aria-label="Volume" />
             </div>
           </div>
-
-          {/* thin progress line (phones) */}
           <div className="md:hidden absolute left-2.5 right-2.5 bottom-0.5 h-[2px] rounded bg-white/25 pointer-events-none">
             <div className="h-full rounded bg-white" style={{ width: `${pct}%`, transition: 'width 250ms linear' }} />
           </div>

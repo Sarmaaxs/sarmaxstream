@@ -18,7 +18,7 @@ export default function ShareButton({ track, className = '', title = 'Copy link'
     const url = buildUrl();
     try {
       if (navigator.share) {
-        await navigator.share({ title: track.title || 'Nuvessia', url });
+        await navigator.share({ title: track.title || 'Sarmax Stream', url });
         return;
       }
     } catch {}

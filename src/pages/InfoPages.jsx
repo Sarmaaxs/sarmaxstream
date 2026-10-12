@@ -101,7 +101,7 @@ export function Terms() {
 
       <Section title="Third-Party Content and Services">
         <p>
-          Nuvessia doesn&apos;t host, store or upload video files. Playback is provided by a
+          Sarmaxstream doesn&apos;t host, store or upload video files. Playback is provided by a
           third-party player embedded in our page, and movie and TV information comes from TMDB.
           Those services are run by someone else. The player can show ads or pop-ups, set its own
           cookies, and be unavailable at times. We don&apos;t control it and aren&apos;t responsible
@@ -113,7 +113,7 @@ export function Terms() {
       <Section title="Copyright">
         <p>
           We respect copyright. If you own rights to a work and believe something reachable through
-          Nuvessia infringes them, message us on <TelegramLink /> with: the title and the page
+          Sarmaxstream infringes them, message us on <TelegramLink /> with: the title and the page
           address on our site, a description of your work, your contact details, and a statement
           that you&apos;re the rights holder or authorized to act for them. We&apos;ll review it
           promptly and remove or disable the relevant title or link where appropriate.
@@ -234,7 +234,7 @@ export function Privacy() {
 
 const FAQS = [
   {
-    q: "What is Nuvessia?",
+    q: "What is Sarmaxstream?",
     a: "A site for finding movies and TV shows. You can browse what's popular, search for a title, save it to My List and press Play.",
   },
   {
@@ -243,7 +243,7 @@ const FAQS = [
   },
   {
     q: "Where do the videos come from?",
-    a: "Playback is provided by a third-party player embedded in the page. Nuvessia doesn't host or store any video files.",
+    a: "Playback is provided by a third-party player embedded in the page. Sarmaxstream doesn't host or store any video files.",
   },
   {
     q: "A video won't play, or I see pop-ups.",

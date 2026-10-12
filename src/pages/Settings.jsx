@@ -118,7 +118,7 @@ export default function Settings() {
           <Row icon={<Bell size={18} />} title="Playlist updates" desc="When playlists you follow change.">
             <Switch checked={notifications.playlists} onCheckedChange={(v) => setNotification('playlists', v)} />
           </Row>
-          <Row icon={<Bell size={18} />} title="Product news" desc="Occasional Nuvessia updates.">
+          <Row icon={<Bell size={18} />} title="Product news" desc="Occasional Sarmaxstream updates.">
             <Switch checked={notifications.product} onCheckedChange={(v) => setNotification('product', v)} />
           </Row>
         </div>

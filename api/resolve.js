@@ -45,7 +45,7 @@ function durOk(candSec, wantSec) {
 async function tryAudius(artist, title, dur) {
   const key = process.env.AUDIUS_API_KEY;
   const q = encodeURIComponent(`${mainArtist(artist)} ${baseTitle(title)}`);
-  const base = `https://api.audius.co/v1/tracks/search?query=${q}&limit=15&app_name=nuvessia`;
+  const base = `https://api.audius.co/v1/tracks/search?query=${q}&limit=15&app_name=sarmaxstream`;
   let d = key ? await getJson(`${base}&api_key=${encodeURIComponent(key)}`) : null;
   if (!d) d = await getJson(base);
   for (const t of (d && d.data) || []) {

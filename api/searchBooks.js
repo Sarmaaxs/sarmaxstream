@@ -41,7 +41,7 @@ function withTimeout(ms) {
 async function fetchText(url, ms, accept) {
   const to = withTimeout(ms);
   try {
-    const r = await fetch(url, { signal: to.signal, headers: { Accept: accept, 'User-Agent': 'Nuvessia/1.0' } });
+    const r = await fetch(url, { signal: to.signal, headers: { Accept: accept, 'User-Agent': 'SarmaxStream/1.0' } });
     if (!r.ok) throw new Error(`status ${r.status}`);
     return await r.text();
   } finally { to.done(); }

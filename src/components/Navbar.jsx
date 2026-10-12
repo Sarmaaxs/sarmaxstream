@@ -48,7 +48,7 @@ export default function Navbar() {
         <Link to="/" className="flex items-center gap-2 shrink-0">
           
           <span className="font-display font-bold text-lg tracking-tight">
-            nuves<span className="text-primary">sia</span>
+            sarmax<span className="text-primary">stream</span>
           </span>
         </Link>
 

@@ -215,7 +215,7 @@ export default function AnimePlayer({
 
       <div className="px-4 sm:px-6 py-2 text-[11px] text-muted-foreground/70 flex items-center gap-2 border-t border-border/40">
         <AlertTriangle className="w-3 h-3" />
-        Stream provided by a third-party embed. Nuvessia does not host any video files.
+        Stream provided by a third-party embed. Sarmaxstream does not host any video files.
       </div>
     </div>
   );

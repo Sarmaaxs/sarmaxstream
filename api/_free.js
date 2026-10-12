@@ -9,7 +9,7 @@
 //   jam_<jamendoId>  ->  /api/stream?id=jam_...
 // Anything else is a YouTube video id.
 
-const APP_NAME = 'nuvessia';
+const APP_NAME = 'sarmaxstream';
 
 // Returns { data, why }: data is the parsed JSON (or null), why says what went wrong.
 async function getJson(url, ms = 6000) {

@@ -32,7 +32,7 @@ export default async function handler(req, res) {
     const id = a.items[0].videoId.replace('aud_', '');
     try {
       const key = process.env.AUDIUS_API_KEY;
-      const r = await fetch(`https://api.audius.co/v1/tracks/${id}/stream?app_name=nuvessia${key ? `&api_key=${encodeURIComponent(key)}` : ''}`, { redirect: 'manual' });
+      const r = await fetch(`https://api.audius.co/v1/tracks/${id}/stream?app_name=sarmaxstream${key ? `&api_key=${encodeURIComponent(key)}` : ''}`, { redirect: 'manual' });
       let loc = r.headers.get('location') || '';
       try { loc = new URL(loc).host; } catch {}
       audiusStream = `HTTP ${r.status}${loc ? ' -> ' + loc : ''}`;

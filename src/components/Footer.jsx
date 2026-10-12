@@ -27,7 +27,7 @@ export default function Footer() {
             </Link>
           ))}
         </nav>
-        <p className="text-xs">© {new Date().getFullYear()} Nuvessia. All rights reserved.</p>
+        <p className="text-xs">© {new Date().getFullYear()} Sarmaxstream. All rights reserved.</p>
       </div>
     </footer>
   );

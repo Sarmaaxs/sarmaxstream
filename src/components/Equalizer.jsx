@@ -1,5 +1,4 @@
 import React from 'react';
-
 // Tiny animated equalizer bars. They dance while a song plays and rest when it's paused.
 export default function Equalizer({ playing = false, className = '' }) {
   return (

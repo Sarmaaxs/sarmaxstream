@@ -1,13 +1,7 @@
 import { useEffect, useRef } from 'react';
-
-// Desktop shortcuts for the music player:
-//   Space = play/pause   ← / → = seek 5s   Shift+← / Shift+→ = previous / next
-//   M = mute             L = like           ↑ / ↓ = volume
-// Ignored while you're typing in a field or focused on a button/link.
 export function useKeyboardShortcuts(player, onLike) {
   const ref = useRef({ player, onLike });
   ref.current = { player, onLike };
-
   useEffect(() => {
     const onKey = (e) => {
       if (e.metaKey || e.ctrlKey || e.altKey) return;

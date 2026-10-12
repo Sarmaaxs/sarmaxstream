@@ -7,13 +7,9 @@ import ShareButton from '@/components/ShareButton';
 import LyricsView from '@/components/LyricsView';
 import Equalizer from '@/components/Equalizer';
 import { useSettings } from '@/lib/useSettings';
-// base44 removed — using fetch to /api/getLyrics instead
-import { ChevronDown, Play, Pause, SkipBack, SkipForward, Repeat, Shuffle, Heart, Loader2 } from 'lucide-react';
+import { ChevronDown, Play, Pause, SkipBack, SkipForward, Repeat, Shuffle, Heart, Loader2, Download } from 'lucide-react';
 
-const SIZE_KEY = 'nuvessia_lyric_size';
-const SPEEDS = [0.75, 1, 1.25, 1.5, 2];
-const SLEEPS = [[0, 'Off'], [15, '15 min'], [30, '30 min'], [60, '1 hour']];
-
+const SIZE_KEY = 'sarmax_lyric_size';
 const LYRICS_CACHE_PREFIX = 'sarmax_lyrics_v2:';
 const OFFSET_PREFIX = 'sarmax_lyric_offset:';
 
@@ -24,23 +20,27 @@ function fmt(sec) {
   return `${Math.floor(sec / 60)}:${Math.floor(sec % 60).toString().padStart(2, '0')}`;
 }
 
+function safeFilename(title, artist) {
+  const base = [artist, title].filter(Boolean).join(' - ').replace(/[<>:"/\\|?*\x00-\x1f]/g, '').trim() || 'track';
+  return base.slice(0, 120) + '.m4a';
+}
+
 export default function NowPlaying() {
   const p = usePlayer();
   const lib = useMusicLibrary();
-  const { playbackSpeed, setPlaybackSpeed, sleepTimer, setSleepTimer } = useSettings();
+  const { playbackSpeed } = useSettings();
   const t = p.current;
   const [lyricLines, setLyricLines] = useState([]);
   const [lyricPlain, setLyricPlain] = useState('');
   const [loadingL, setLoadingL] = useState(false);
   const [failed, setFailed] = useState(false);
   const [offset, setOffset] = useState(0);
-  const [tab, setTab] = useState('lyrics'); // 'lyrics' | 'queue' | 'more' | 'tune'
+  const [tab, setTab] = useState('lyrics'); // 'lyrics' | 'more' only
   const [lyricSize, setLyricSize] = useState(() => { const s = readJSON(SIZE_KEY); return s === 's' || s === 'l' ? s : 'm'; });
-  const pickSize = (s) => { setLyricSize(s); writeJSON(SIZE_KEY, s); };
-  const queueRowRef = React.useRef(null);
   const [more, setMore] = useState([]);
   const [moreLoading, setMoreLoading] = useState(false);
   const [closing, setClosing] = useState(false);
+  const [dlState, setDlState] = useState('idle'); // idle | loading | error
   const color = useAlbumColor(t?.thumbnail, `${t?.title || ''}${t?.artist || ''}`);
 
   const close = () => {
@@ -49,7 +49,7 @@ export default function NowPlaying() {
     setTimeout(() => { setClosing(false); p.closeNowPlaying(); }, 260);
   };
 
-  // "More by this artist" — songs by the same artist, one tap to play.
+  // "More by this artist"
   useEffect(() => {
     if (!p.nowPlayingOpen || !t || tab !== 'more' || !t.artist) return undefined;
     let alive = true;
@@ -67,15 +67,11 @@ export default function NowPlaying() {
   }, [p.nowPlayingOpen, t?.videoId, t?.artist, tab]);
 
   useEffect(() => {
-    if (tab === 'queue' && queueRowRef.current) queueRowRef.current.scrollIntoView({ block: 'center' });
-  }, [tab, p.nowPlayingOpen]);
-
-  // Remember a per-song lyric offset for next visit.
-  useEffect(() => {
     if (!t) return;
     const saved = readJSON(OFFSET_PREFIX + t.videoId);
     setOffset(typeof saved === 'number' ? saved : 0);
   }, [t?.videoId]);
+
   const nudge = (d) => {
     setOffset((o) => {
       const n = Math.round((o + d) * 10) / 10;
@@ -85,8 +81,6 @@ export default function NowPlaying() {
   };
 
   const durKnown = p.duration > 0 ? Math.round(p.duration) : 0;
-  // Wait (max 3s) for the real song length so we can pick the matching lyric
-  // version; the length is what makes synced lyrics line up.
   const [waitedId, setWaitedId] = useState(null);
   useEffect(() => {
     if (!p.nowPlayingOpen || !t) return;
@@ -133,18 +127,61 @@ export default function NowPlaying() {
     return () => { active = false; clearTimeout(safety); };
   }, [p.nowPlayingOpen, t?.videoId, lyricsReady]);
 
+  // Download: resolve stream URL then force a file download in the browser
+  const handleDownload = async () => {
+    if (!t || dlState === 'loading') return;
+    setDlState('loading');
+    try {
+      const id = t.videoId || t.catalogId;
+      // Prefer your existing resolve/stream APIs
+      let url = null;
+      let contentType = 'audio/mp4';
+      try {
+        const r = await fetch('/api/resolve', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ videoId: id, type: 'audio' }),
+        }).then((x) => x.json());
+        url = r.url || r.streamUrl || r.audioUrl || r.downloadUrl || null;
+        if (r.contentType) contentType = r.contentType;
+      } catch {}
+      if (!url) {
+        const r2 = await fetch(`/api/stream?videoId=${encodeURIComponent(id)}&format=audio`).then((x) => x.json()).catch(() => ({}));
+        url = r2.url || r2.streamUrl || null;
+      }
+      if (!url) throw new Error('No stream URL');
+
+      // Try blob download so the filename is correct; fall back to opening the URL
+      const res = await fetch(url);
+      if (!res.ok) throw new Error('Fetch failed');
+      const blob = await res.blob();
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = safeFilename(t.title, t.artist);
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 2000);
+      setDlState('idle');
+    } catch (e) {
+      console.warn('Download failed', e);
+      setDlState('error');
+      setTimeout(() => setDlState('idle'), 2500);
+    }
+  };
+
   if (!p.nowPlayingOpen || !t) return null;
   const saved = lib.savedIds && lib.savedIds.has(t.videoId);
-
   const hasSynced = lyricLines.length > 0;
 
   return (
     <div className={`fixed inset-x-0 top-0 z-[60] flex flex-col h-[100dvh] overflow-hidden ${closing ? 'np-out' : 'np-in'}`} style={{ height: '100dvh', background: '#000' }}>
-      {/* 100% solid: a black base, then the song's colour, then a fade to black at the bottom */}
+      {/* solid base = album colour */}
       <div className="absolute inset-0" style={{ backgroundColor: color, transition: 'background-color 1000ms ease' }} />
-      {/* slowly drifting colour glows, they move while the song plays, like a lyric video */}
+      {/* slowly drifting colour glows that move while the song plays */}
       <div className="np-aurora" style={{ '--c': color }} data-playing={p.isPlaying ? 'true' : 'false'}><i /><i /><i /></div>
       <div className="absolute inset-0" style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0.10) 0%, rgba(0,0,0,0.45) 55%, rgba(0,0,0,0.92) 100%)' }} />
+
       <div
         className="relative flex flex-col h-full max-w-4xl mx-auto w-full px-4 sm:px-5 gap-3"
         style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 0.75rem)', paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) + 0.75rem)' }}
@@ -152,13 +189,23 @@ export default function NowPlaying() {
         <div className="flex items-center justify-between shrink-0">
           <button onClick={close} aria-label="Close" className="p-3 -m-1 rounded-full glass text-white/80 hover:text-white"><ChevronDown size={22} /></button>
           <div className="flex items-center gap-2 text-xs uppercase tracking-wide text-white/70"><Equalizer playing={p.isPlaying} /> Now Playing</div>
-          <button onClick={() => lib.toggleSave(t)} aria-label="Like" className={`p-3 -m-1 rounded-full glass ${saved ? 'text-primary' : 'text-white/70'}`}>
-            <Heart size={20} fill={saved ? 'currentColor' : 'none'} />
-          </button>
+          <div className="flex items-center gap-1">
+            <button
+              onClick={handleDownload}
+              aria-label="Download"
+              disabled={dlState === 'loading'}
+              className={`p-3 -m-1 rounded-full glass ${dlState === 'error' ? 'text-red-400' : 'text-white/70 hover:text-white'}`}
+              title={dlState === 'error' ? 'Download failed' : 'Download'}
+            >
+              {dlState === 'loading' ? <Loader2 size={20} className="animate-spin" /> : <Download size={20} />}
+            </button>
+            <button onClick={() => lib.toggleSave(t)} aria-label="Like" className={`p-3 -m-1 rounded-full glass ${saved ? 'text-primary' : 'text-white/70'}`}>
+              <Heart size={20} fill={saved ? 'currentColor' : 'none'} />
+            </button>
+          </div>
         </div>
 
         <div className="flex-1 min-h-0 flex flex-col md:flex-row gap-3 md:gap-5">
-          {/* Song info: compact row on phones, big card on desktop */}
           <div className="md:w-1/2 flex md:flex-col items-center md:justify-center gap-3 shrink-0 md:shrink">
             <img src={t.thumbnail} alt="" className="w-16 h-16 md:w-48 md:h-48 rounded-xl md:rounded-2xl object-cover shadow-2xl shrink-0" />
             <div className="min-w-0 flex-1 md:flex-none md:text-center md:w-full">
@@ -168,16 +215,17 @@ export default function NowPlaying() {
             </div>
           </div>
 
-          {/* Lyrics / More by artist fill whatever space is left, so controls never get pushed off-screen */}
           <div className="md:w-1/2 flex flex-col flex-1 min-h-0 rounded-2xl p-2 md:p-4">
+            {/* Only Lyrics + More — Up next and Tune removed */}
             <div className="shrink-0 flex items-center sm:justify-center gap-2 pb-2 overflow-x-auto no-scrollbar">
-              {[['lyrics', 'Lyrics'], ['queue', 'Up next'], ['more', 'More'], ['tune', 'Tune']].map(([k, label]) => (
+              {[['lyrics', 'Lyrics'], ['more', 'More']].map(([k, label]) => (
                 <button key={k} onClick={() => setTab(k)} className={`shrink-0 px-4 py-1.5 rounded-full text-xs font-semibold transition ${tab === k ? 'bg-white text-black' : 'bg-white/15 text-white hover:bg-white/25'}`}>{label}</button>
               ))}
             </div>
+
             {tab === 'lyrics' ? (
               <>
-                <LyricsView lines={lyricLines} plain={lyricPlain} currentTime={p.currentTime} loading={loadingL || !lyricsReady} failed={failed} offset={offset} onSeek={p.seek} isPlaying={p.isPlaying} rate={playbackSpeed} size={lyricSize} />
+                <LyricsView lines={lyricLines} plain={lyricPlain} currentTime={p.currentTime} loading={loadingL || !lyricsReady} failed={failed} offset={offset} onSeek={p.seek} size={lyricSize} />
                 {hasSynced && (
                   <div className="shrink-0 flex items-center justify-center gap-3 pt-2 text-[11px] text-white/70">
                     <button onClick={() => nudge(-0.5)} className="px-3 py-1.5 rounded-full bg-white/15">Lyrics later</button>
@@ -186,53 +234,6 @@ export default function NowPlaying() {
                   </div>
                 )}
               </>
-            ) : tab === 'queue' ? (
-              <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar overscroll-contain space-y-1">
-                {p.queue.length === 0 && <div className="text-white/70 text-sm p-3">Nothing in the queue yet.</div>}
-                {p.queue.map((m, i) => {
-                  const now = i === p.index;
-                  return (
-                    <button key={`${m.videoId}-${i}`} ref={now ? queueRowRef : null} onClick={() => p.playTrack(m, p.queue)} className={`w-full flex items-center gap-3 p-2 rounded-xl text-left ${now ? 'bg-white/15' : 'hover:bg-white/10'}`}>
-                      <img src={m.thumbnail} alt="" className="w-11 h-11 rounded-lg object-cover shrink-0" />
-                      <div className="min-w-0 flex-1">
-                        <div className={`truncate text-sm font-medium ${now ? 'text-primary' : 'text-white'}`}>{m.title}</div>
-                        <div className="truncate text-xs text-white/70">{m.artist}</div>
-                      </div>
-                      {now ? <Equalizer playing={p.isPlaying} className="text-primary" /> : <span className="text-[11px] text-white/50 tabular-nums w-6 text-right">{i + 1}</span>}
-                    </button>
-                  );
-                })}
-              </div>
-            ) : tab === 'tune' ? (
-              <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar overscroll-contain space-y-5 p-1 text-white">
-                <div>
-                  <div className="text-xs uppercase tracking-wide text-white/60 mb-2">Speed</div>
-                  <div className="flex flex-wrap gap-2">
-                    {SPEEDS.map((s) => (
-                      <button key={s} onClick={() => setPlaybackSpeed(s)} className={`px-3.5 py-1.5 rounded-full text-xs font-semibold ${Math.abs(playbackSpeed - s) < 0.01 ? 'bg-white text-black' : 'bg-white/15 hover:bg-white/25'}`}>{s}x</button>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-xs uppercase tracking-wide text-white/60 mb-2">Sleep timer</div>
-                  <div className="flex flex-wrap gap-2">
-                    {SLEEPS.map(([m, label]) => (
-                      <button key={m} onClick={() => setSleepTimer(m)} className={`px-3.5 py-1.5 rounded-full text-xs font-semibold ${sleepTimer === m ? 'bg-white text-black' : 'bg-white/15 hover:bg-white/25'}`}>{label}</button>
-                    ))}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-xs uppercase tracking-wide text-white/60 mb-2">Lyrics size</div>
-                  <div className="flex gap-2">
-                    {[['s', 'Small'], ['m', 'Medium'], ['l', 'Large']].map(([k, label]) => (
-                      <button key={k} onClick={() => pickSize(k)} className={`px-3.5 py-1.5 rounded-full text-xs font-semibold ${lyricSize === k ? 'bg-white text-black' : 'bg-white/15 hover:bg-white/25'}`}>{label}</button>
-                    ))}
-                  </div>
-                </div>
-                <div className="hidden md:block text-[11px] leading-relaxed text-white/50">
-                  Shortcuts: Space play/pause · ← → seek 5s · Shift+← → previous/next · ↑ ↓ volume · M mute · L like
-                </div>
-              </div>
             ) : (
               <div className="flex-1 min-h-0 overflow-y-auto no-scrollbar overscroll-contain space-y-1">
                 {moreLoading && <div className="flex items-center gap-2 text-white/70 text-sm p-3"><Loader2 size={16} className="animate-spin" /> Finding songs…</div>}
@@ -253,7 +254,6 @@ export default function NowPlaying() {
           </div>
         </div>
 
-        {/* Controls pinned to the bottom, always reachable */}
         <div className="shrink-0 space-y-2">
           <div className="flex items-center gap-2 text-[11px] text-white/50">
             <span className="w-9 text-right tabular-nums">{fmt(p.currentTime)}</span>
