@@ -48,7 +48,11 @@ export default function LyricsView({ lines, plain, currentTime, loading, failed,
   useEffect(() => { lineRefs.current = []; }, [lines]);
 
   if (loading) {
-    return <div className="flex items-center gap-2 text-white/60"><Loader2 size={16} className="animate-spin" /> Finding lyrics…</div>;
+    return (
+      <div className="flex items-center gap-2 text-white/60">
+        <Loader2 size={16} className="animate-spin" /> Finding lyrics…
+      </div>
+    );
   }
 
   if (lines && lines.length) {
@@ -59,7 +63,10 @@ export default function LyricsView({ lines, plain, currentTime, loading, failed,
         onTouchMove={startBrowsing}
         onWheel={startBrowsing}
         className="relative flex-1 overflow-y-auto min-h-0 text-center py-[35%] overscroll-contain no-scrollbar"
-        style={{ WebkitMaskImage: 'linear-gradient(to bottom, transparent 0, #000 12%, #000 88%, transparent 100%)', maskImage: 'linear-gradient(to bottom, transparent 0, #000 12%, #000 88%, transparent 100%)' }}
+        style={{
+          WebkitMaskImage: 'linear-gradient(to bottom, transparent 0, #000 12%, #000 88%, transparent 100%)',
+          maskImage: 'linear-gradient(to bottom, transparent 0, #000 12%, #000 88%, transparent 100%)',
+        }}
       >
         {lines.map((l, i) => {
           const active = i === activeIdx;
@@ -70,8 +77,12 @@ export default function LyricsView({ lines, plain, currentTime, loading, failed,
             <p
               key={i}
               ref={(el) => (lineRefs.current[i] = el)}
-              onClick={() => { if (onSeek && typeof l.time === 'number') onSeek(Math.max(0, l.time - offset)); }}
-              className={`font-lyric px-3 my-3.5 leading-snug cursor-pointer origin-center ${active ? `${sz.on} font-bold text-white` : `${sz.off} font-semibold text-white`}`}
+              onClick={() => {
+                if (onSeek && typeof l.time === 'number') onSeek(Math.max(0, l.time - offset));
+              }}
+              className={`font-lyric px-3 my-3.5 leading-snug cursor-pointer origin-center ${
+                active ? `${sz.on} font-bold text-white` : `${sz.off} font-semibold text-white`
+              }`}
               style={{
                 filter: `blur(${blur}px)`,
                 opacity,
@@ -88,8 +99,13 @@ export default function LyricsView({ lines, plain, currentTime, loading, failed,
   }
 
   if (plain) {
-    return <div className="flex-1 overflow-y-auto min-h-0 text-lg leading-relaxed whitespace-pre-line text-white/90 font-lyric overscroll-contain no-scrollbar">{plain}</div>;
+    return (
+      <div className="flex-1 overflow-y-auto min-h-0 text-lg leading-relaxed whitespace-pre-line text-white/90 font-lyric overscroll-contain no-scrollbar">
+        {plain}
+      </div>
+    );
   }
-  if (failed) return <div className="text-white/60">Couldn't load lyrics right now.</div>;
+
+  if (failed) return <div className="text-white/60">Couldn&apos;t load lyrics right now.</div>;
   return <div className="text-white/60">No lyrics found for this track.</div>;
 }
