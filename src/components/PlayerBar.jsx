@@ -3,6 +3,8 @@ import { usePlayer } from '@/lib/PlayerContext';
 import { useMusicLibrary } from '@/lib/useMusicLibrary';
 import { useAlbumColor } from '@/lib/useAlbumColor';
 import NowPlaying from '@/components/NowPlaying';
+import Equalizer from '@/components/Equalizer';
+import { useKeyboardShortcuts } from '@/lib/useKeyboardShortcuts';
 import { Play, Pause, SkipBack, SkipForward, Volume2, VolumeX, Repeat, Shuffle, Heart, Loader2 } from 'lucide-react';
 
 function fmt(sec) {
@@ -21,6 +23,7 @@ export default function PlayerBar() {
   const lib = useMusicLibrary();
   const t = p.current;
   const color = useAlbumColor(t?.thumbnail, `${t?.title || ''}${t?.artist || ''}`);
+  useKeyboardShortcuts(p, () => { if (t) lib.toggleSave(t); });
   if (!t) return null;
   const saved = lib.savedIds && lib.savedIds.has(t.videoId);
   const pct = p.duration ? Math.min(100, (p.currentTime / p.duration) * 100) : 0;
@@ -41,7 +44,10 @@ export default function PlayerBar() {
             <div className="flex items-center gap-3 min-w-0 flex-1 md:flex-none md:w-[28%]">
               <img src={t.thumbnail} alt="" className="w-10 h-10 md:w-12 md:h-12 rounded-md object-cover shadow-lg shrink-0" />
               <div className="min-w-0">
-                <div className="truncate text-sm font-semibold text-white">{t.title}</div>
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="truncate text-sm font-semibold text-white">{t.title}</div>
+                  {p.isPlaying && <Equalizer playing className="text-primary shrink-0" />}
+                </div>
                 <div className="truncate text-xs text-white/70">{t.artist}</div>
               </div>
             </div>

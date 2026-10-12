@@ -42,7 +42,7 @@ export default function Login() {
     <AuthLayout
       icon={LogIn}
       title="Welcome back"
-      subtitle="Sign in to continue to Sarmaxstream"
+      subtitle="Sign in to continue to Nuvessia"
       footer={
         <>
           Don't have an account?{" "}

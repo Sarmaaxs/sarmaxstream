@@ -85,7 +85,7 @@ export default function DogMascot() {
         <button onClick={() => setOpen(false)} className="p-2 rounded-full glass text-white/80 hover:text-white"><X size={22} /></button>
         <div className="flex items-center gap-2">
           <img src={DOG_IMG} alt="" className="w-7 h-7 object-contain" />
-          <span className="font-display font-bold"><span className="text-white">sarmax</span><span className="text-primary">stream</span></span>
+          <span className="font-display font-bold"><span className="text-white">nuves</span><span className="text-primary">sia</span></span>
         </div>
         <div className="w-9" />
       </div>

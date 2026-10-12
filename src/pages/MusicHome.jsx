@@ -32,7 +32,7 @@ export default function Home() {
     <div className="space-y-8">
       <div className="flex flex-col items-center text-center pt-2 pb-4">
         <h1 className="font-display font-extrabold tracking-tight leading-none" style={{ fontSize: 'clamp(2.5rem, 6vw, 5rem)' }}>
-          <span className="text-foreground">sarmax</span><span className="text-primary">stream</span>
+          <span className="text-foreground">nuves</span><span className="text-primary">sia</span>
         </h1>
         <div className="w-full max-w-2xl mt-6">
           <SearchBar />

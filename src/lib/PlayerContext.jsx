@@ -479,7 +479,7 @@ export function PlayerProvider({ children }) {
       navigator.mediaSession.metadata = new window.MediaMetadata({
         title: current.title || '',
         artist: current.artist || '',
-        album: 'Sarmax Stream',
+        album: 'Nuvessia',
         artwork: current.thumbnail ? [{ src: current.thumbnail, sizes: '480x480', type: 'image/jpeg' }] : []
       });
     }
