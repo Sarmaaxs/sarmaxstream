@@ -8,6 +8,25 @@
     <meta name="description" content="Sarmaxstream: stream music with lyrics, movies, TV shows, anime and books." />
     <link rel="manifest" href="/manifest.json" />
     <title>Sarmaxstream</title>
+
+    <!-- Dark background right away so there is no white flash while the app loads -->
+    <style>html,body{background:#08080a;color:#fff;margin:0}</style>
+
+    <!-- Open connections early (saves ~100-300ms on first load) -->
+    <link rel="preconnect" href="https://image.tmdb.org" crossorigin />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+
+    <!-- Fonts: loaded without blocking the page (text shows instantly, font swaps in) -->
+    <link
+      rel="preload"
+      as="style"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap"
+      onload="this.onload=null;this.rel='stylesheet'"
+    />
+    <noscript>
+      <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&display=swap" />
+    </noscript>
   </head>
   <body>
     <div id="root"></div>

@@ -4,8 +4,9 @@ import { Play, Star } from "lucide-react";
 import { backdropUrl } from "@/lib/tmdb";
 import { animeCardType } from "@/lib/anime";
 
-export default function Hero({ item }) {
-  if (!item) return null;
+export default function Hero({ item, loading = false }) {
+  // Keep the space reserved while loading so the page doesn't jump when the hero appears.
+  if (!item) return loading ? <section className="relative h-[78vh] min-h-[520px] w-full bg-gradient-to-b from-muted/40 to-background" aria-hidden="true" /> : null;
   const type = animeCardType(item) || item.media_type || (item.first_air_date ? "tv" : "movie");
   const title = item.title || item.name;
   const year = (item.release_date || item.first_air_date || "").slice(0, 4);
@@ -15,8 +16,18 @@ export default function Hero({ item }) {
       <div className="absolute inset-0">
         {backdropUrl(item.backdrop_path) && (
           <img
-            src={backdropUrl(item.backdrop_path, "original")}
+            src={backdropUrl(item.backdrop_path, "w1280")}
+            srcSet={
+              backdropUrl(item.backdrop_path, "w780") !== backdropUrl(item.backdrop_path, "w1280")
+                ? `${backdropUrl(item.backdrop_path, "w780")} 780w, ${backdropUrl(item.backdrop_path, "w1280")} 1280w`
+                : undefined
+            }
+            sizes="100vw"
             alt={title}
+            width="1280"
+            height="720"
+            fetchpriority="high"
+            decoding="async"
             className="w-full h-full object-cover scale-105"
           />
         )}

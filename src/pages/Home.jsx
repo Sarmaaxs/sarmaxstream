@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Navbar from "@/components/Navbar";
 import Hero from "@/components/Hero";
 import MovieRow from "@/components/MovieRow";
@@ -14,6 +14,50 @@ import { getContinueWatching } from "@/lib/library";
 import { Link } from "react-router-dom";
 import { Play } from "lucide-react";
 
+// A row that only downloads its data when you scroll close to it.
+// Fewer requests at the start = the top of the page shows up much sooner.
+function LazyRow({ title, load }) {
+  const ref = useRef(null);
+  const [items, setItems] = useState(null);
+
+  useEffect(() => {
+    let active = true;
+    const start = () => {
+      load()
+        .then((r) => active && setItems(r))
+        .catch(() => active && setItems([]));
+    };
+    const el = ref.current;
+    if (!el || !("IntersectionObserver" in window)) {
+      start();
+      return () => {
+        active = false;
+      };
+    }
+    const io = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          io.disconnect();
+          start();
+        }
+      },
+      { rootMargin: "700px" }
+    );
+    io.observe(el);
+    return () => {
+      active = false;
+      io.disconnect();
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <div ref={ref}>
+      <MovieRow title={title} items={items || []} loading={items === null} />
+    </div>
+  );
+}
+
 const GENRE_ROWS = [
   { type: "movie", id: 28, label: "Action & Adventure" },
   { type: "movie", id: 35, label: "Comedy" },
@@ -25,70 +69,46 @@ const GENRE_ROWS = [
 
 export default function Home() {
   const [hero, setHero] = useState(null);
-  const [trending, setTrending] = useState([]);
-  const [popMovies, setPopMovies] = useState([]);
-  const [popTv, setPopTv] = useState([]);
-  const [popAnime, setPopAnime] = useState([]);
-  const [topRated, setTopRated] = useState([]);
-  const [genreRows, setGenreRows] = useState([]);
+  const [heroLoading, setHeroLoading] = useState(true);
+  const [trending, setTrending] = useState(null);
+  const [popMovies, setPopMovies] = useState(null);
+  const [popTv, setPopTv] = useState(null);
   const [continueItems, setContinueItems] = useState([]);
-  const [loading, setLoading] = useState(true);
 
+  // Only the 3 things you see first are loaded right away, and each one shows
+  // the moment it arrives (no waiting for the slowest request).
   useEffect(() => {
     let active = true;
-    (async () => {
-      setLoading(true);
-      try {
-        const [trend, pm, pt, tr, ...genreResults] = await Promise.all([
-          tmdbTrending("week"),
-          tmdbPopular("movie"),
-          tmdbPopular("tv"),
-          tmdbTopRated("movie"),
-          ...GENRE_ROWS.map((g) => tmdbByGenre(g.type, g.id)),
-        ]);
+    tmdbTrending("week")
+      .then((trend) => {
         if (!active) return;
-        const featured = (trend?.results || []).find((r) => r.backdrop_path) || (trend?.results || [])[0];
-        setHero(featured || null);
-        setTrending((trend?.results || []).filter((r) => r.media_type !== "person"));
-        setPopMovies(pm?.results || []);
-        setPopTv(pt?.results || []);
-        setTopRated(tr?.results || []);
-        setGenreRows(
-          GENRE_ROWS.map((g, i) => ({
-            ...g,
-            items: (genreResults[i]?.results || []).filter((r) => r.poster_path),
+        const list = trend?.results || [];
+        setHero(list.find((r) => r.backdrop_path) || list[0] || null);
+        setTrending(list.filter((r) => r.media_type !== "person"));
+      })
+      .catch(() => active && setTrending([]))
+      .finally(() => active && setHeroLoading(false));
+    tmdbPopular("movie")
+      .then((r) => active && setPopMovies(r?.results || []))
+      .catch(() => active && setPopMovies([]));
+    tmdbPopular("tv")
+      .then((r) => active && setPopTv(r?.results || []))
+      .catch(() => active && setPopTv([]));
+    getContinueWatching()
+      .then((rows) => {
+        if (!active) return;
+        setContinueItems(
+          rows.map((r) => ({
+            id: r.tmdb_id,
+            media_type: r.media_type,
+            name: r.title,
+            poster_path: r.poster_path,
+            backdrop_path: r.backdrop_path,
+            season: r.season,
+            episode: r.episode,
           }))
         );
-        getContinueWatching()
-          .then((rows) => {
-            if (!active) return;
-            setContinueItems(
-              rows.map((r) => ({
-                id: r.tmdb_id,
-                media_type: r.media_type,
-                name: r.title,
-                poster_path: r.poster_path,
-                backdrop_path: r.backdrop_path,
-                season: r.season,
-                episode: r.episode,
-              }))
-            );
-          })
-          .catch(() => {});
-      } finally {
-        if (active) setLoading(false);
-      }
-    })();
-    return () => {
-      active = false;
-    };
-  }, []);
-
-  // Anime row loads on its own so a Jikan hiccup never breaks the home page.
-  useEffect(() => {
-    let active = true;
-    animeList("popular")
-      .then((r) => active && setPopAnime(r.items))
+      })
       .catch(() => {});
     return () => {
       active = false;
@@ -98,7 +118,7 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
-      <Hero item={hero} />
+      <Hero item={hero} loading={heroLoading} />
 
       <div className="relative -mt-12 z-10 pb-page">
         {continueItems.length > 0 && (
@@ -139,13 +159,17 @@ export default function Home() {
           </section>
         )}
 
-        <MovieRow title="Trending Now" items={trending} loading={loading} />
-        <MovieRow title="Popular Movies" items={popMovies} loading={loading} />
-        <MovieRow title="Popular Series" items={popTv} loading={loading} />
-        <MovieRow title="Popular Anime" items={popAnime} loading={false} />
-        <MovieRow title="Top Rated" items={topRated} loading={loading} />
-        {genreRows.map((g) => (
-          <MovieRow key={g.label} title={g.label} items={g.items} loading={loading} />
+        <MovieRow title="Trending Now" items={trending || []} loading={trending === null} priority />
+        <MovieRow title="Popular Movies" items={popMovies || []} loading={popMovies === null} />
+        <MovieRow title="Popular Series" items={popTv || []} loading={popTv === null} />
+        <LazyRow title="Popular Anime" load={() => animeList("popular").then((r) => r.items)} />
+        <LazyRow title="Top Rated" load={() => tmdbTopRated("movie").then((r) => r?.results || [])} />
+        {GENRE_ROWS.map((g) => (
+          <LazyRow
+            key={g.label}
+            title={g.label}
+            load={() => tmdbByGenre(g.type, g.id).then((r) => (r?.results || []).filter((x) => x.poster_path))}
+          />
         ))}
       </div>
     </div>

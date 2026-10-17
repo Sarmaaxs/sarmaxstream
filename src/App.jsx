@@ -1,4 +1,4 @@
-import React, { Suspense, lazy } from 'react';
+import React, { Suspense, lazy, useEffect } from 'react';
 import { Toaster } from "@/components/ui/toaster"
 import { QueryClientProvider } from '@tanstack/react-query'
 import { queryClientInstance } from '@/lib/query-client'
@@ -39,19 +39,29 @@ const Artist = lazy(() => import('@/pages/Artist'));
 const MusicSettings = lazy(() => import('@/pages/Settings'));
 import { SettingsProvider } from '@/lib/useSettings';
 import { PlayerProvider } from '@/lib/PlayerContext';
-import { Analytics } from "@vercel/analytics/react"
+// Analytics is not needed to show the page, so it loads separately, later.
+const Analytics = lazy(() => import("@vercel/analytics/react").then((m) => ({ default: m.Analytics })));
 
 const AuthenticatedApp = () => {
-  const { isLoadingAuth, isLoadingPublicSettings, authError, navigateToLogin } = useAuth();
+  const { authError, navigateToLogin } = useAuth();
 
-  // Show loading spinner while checking app public settings or auth
-  if (isLoadingPublicSettings || isLoadingAuth) {
-    return (
-      <div className="fixed inset-0 flex items-center justify-center">
-        <div className="w-8 h-8 border-4 border-slate-200 border-t-slate-800 rounded-full animate-spin"></div>
-      </div>
-    );
-  }
+  // NOTE: we no longer block the whole app with a spinner while login is checked.
+  // Public pages show immediately; ProtectedRoute waits by itself where it really matters.
+
+  // After the page is idle, quietly download the pages people open next,
+  // so tapping a movie or search feels instant.
+  useEffect(() => {
+    const warm = () => {
+      import('@/pages/TitleDetail');
+      import('@/pages/Search');
+    };
+    if ('requestIdleCallback' in window) {
+      const id = requestIdleCallback(warm, { timeout: 5000 });
+      return () => cancelIdleCallback(id);
+    }
+    const t = setTimeout(warm, 2500);
+    return () => clearTimeout(t);
+  }, []);
 
   // Handle authentication errors
   if (authError) {
@@ -130,7 +140,7 @@ function App() {
           <AuthenticatedApp />
         </Router>
         <Toaster />
-        <Analytics />
+        <Suspense fallback={null}><Analytics /></Suspense>
       </QueryClientProvider>
     </AuthProvider>
   )
