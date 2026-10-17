@@ -1,0 +1,28 @@
+{
+  "appId": "com.sarmaxstream.app",
+  "appName": "Sarmaxstream",
+  "webDir": "www",
+  "backgroundColor": "#0b0b0d",
+  "server": {
+    "url": "https://sarmaxstreams.vercel.app",
+    "cleartext": false,
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": false,
+    "appendUserAgent": "SarmaxstreamApp",
+    "webContentsDebuggingEnabled": false
+  },
+  "plugins": {
+    "SplashScreen": {
+      "launchShowDuration": 1200,
+      "launchAutoHide": true,
+      "backgroundColor": "#0b0b0d",
+      "showSpinner": false
+    },
+    "StatusBar": {
+      "style": "DARK",
+      "backgroundColor": "#0b0b0d"
+    }
+  }
+}

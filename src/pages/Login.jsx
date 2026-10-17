@@ -8,6 +8,7 @@ import { Mail, Lock, Loader2, Eye, EyeOff, CheckCircle2 } from "lucide-react";
 import AuthLayout from "@/components/AuthLayout";
 import GoogleIcon from "@/components/GoogleIcon";
 import { safeReturnTo } from "@/lib/authReturnTo";
+import { isNative } from "@/lib/native";
 
 const fieldCls =
   "h-12 pl-10 bg-white/5 border-white/15 text-white placeholder:text-white/30 focus-visible:ring-primary";
@@ -82,6 +83,7 @@ export default function Login() {
         </>
       }
     >
+      <div className={isNative ? "hidden" : undefined}>
       <Button
         type="button"
         variant="outline"
@@ -99,8 +101,10 @@ export default function Login() {
         </div>
       </div>
 
+      </div>
+
       {/* Password / email-link switch */}
-      <div role="tablist" aria-label="Sign-in method" className="grid grid-cols-2 gap-1 p-1 mb-5 rounded-lg bg-white/5 border border-white/10">
+      <div role="tablist" aria-label="Sign-in method" className={"grid grid-cols-2 gap-1 p-1 mb-5 rounded-lg bg-white/5 border border-white/10" + (isNative ? " hidden" : "")}>
         {[["password", "Password"], ["link", "Email link"]].map(([id, label]) => (
           <button
             key={id}

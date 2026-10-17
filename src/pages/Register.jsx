@@ -10,6 +10,7 @@ import AuthLayout from "@/components/AuthLayout";
 import GoogleIcon from "@/components/GoogleIcon";
 import { toast } from "@/components/ui/use-toast";
 import { safeReturnTo } from "@/lib/authReturnTo";
+import { isNative } from "@/lib/native";
 
 export default function Register() {
   const [email, setEmail] = useState("");
@@ -150,6 +151,7 @@ export default function Register() {
         </>
       }
     >
+      {!isNative && (<>
       <Button
         variant="outline"
         className="w-full h-12 text-sm font-medium mb-6"
@@ -167,6 +169,7 @@ export default function Register() {
           <span className="bg-card px-3 text-muted-foreground">or</span>
         </div>
       </div>
+      </>)}
 
       {error && (
         <div className="mb-4 p-3 rounded-lg bg-destructive/10 text-destructive text-sm">
