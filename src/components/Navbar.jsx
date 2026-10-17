@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Bookmark, LogIn, UserRound } from "lucide-react";
+import { Bookmark, LogIn, UserRound, Settings as SettingsIcon } from "lucide-react";
 import { supabase } from "@/api/supabaseClient";
 import SearchBox from "@/components/SearchBox";
 import SearchBar from "@/components/SearchBar";
@@ -65,6 +65,12 @@ export default function Navbar() {
         </div>
 
         <div className="flex items-center gap-2 ml-auto sm:ml-2">
+          <Link
+            to="/settings"
+            aria-label="Settings"
+            className="flex items-center justify-center h-10 w-10 rounded-full bg-white/5 border border-border/60 hover:bg-white/10 transition-colors">
+            <SettingsIcon className="w-4 h-4" />
+          </Link>
           {authed ?
           <>
             <Link

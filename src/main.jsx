@@ -2,6 +2,9 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import App from '@/App.jsx'
 import '@/index.css'
+import { applyPrefs } from '@/lib/prefs'
+
+applyPrefs() // saved accent color, text size and motion setting, before first paint
 
 // Tiny error screen (so the big Sentry library is NOT needed to start the app).
 class ErrorBoundary extends React.Component {

@@ -42,7 +42,8 @@ export default async function handler(req, res) {
     params.set(k, val);
   }
   params.set('include_adult', 'false');
-  params.set('language', 'en-US');
+  const lang = String(input.language || '');
+  params.set('language', /^[a-z]{2}-[A-Z]{2}$/.test(lang) ? lang : 'en-US');
   if (!token) params.set('api_key', apiKey);
 
   const url = `https://api.themoviedb.org/3/${path}?${params.toString()}`;

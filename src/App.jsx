@@ -92,6 +92,7 @@ const AuthenticatedApp = () => {
       <Route path="/title/anime-tv/:id" element={<AnimeResolve kind="tv" />} />
       <Route path="/title/anime-movie/:id" element={<AnimeResolve kind="movie" />} />
       <Route path="/title/:type/:id" element={<TitleDetail />} />
+      <Route path="/settings" element={<MusicSettings />} />
       <Route path="/terms" element={<Terms />} />
       <Route path="/privacy" element={<Privacy />} />
       <Route path="/faq" element={<Faq />} />
@@ -103,11 +104,9 @@ const AuthenticatedApp = () => {
       {/* Music section — its own layout, own PlayerProvider/SettingsProvider,
           shares this app's AuthProvider/Router/Toaster. */}
       <Route path="/music" element={
-        <SettingsProvider>
-          <PlayerProvider>
-            <MusicLayout />
-          </PlayerProvider>
-        </SettingsProvider>
+        <PlayerProvider>
+          <MusicLayout />
+        </PlayerProvider>
       }>
         <Route index element={<MusicHome />} />
         <Route path="search" element={<SearchResults />} />
@@ -134,6 +133,7 @@ function App() {
 
   return (
     <AuthProvider>
+      <SettingsProvider>
       <QueryClientProvider client={queryClientInstance}>
         <Router>
           <ScrollToTop />
@@ -142,6 +142,7 @@ function App() {
         <Toaster />
         <Suspense fallback={null}><Analytics /></Suspense>
       </QueryClientProvider>
+      </SettingsProvider>
     </AuthProvider>
   )
 }

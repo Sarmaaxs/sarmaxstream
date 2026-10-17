@@ -1,4 +1,5 @@
 import { cachedJson } from "@/lib/cache";
+import { getPrefs } from "@/lib/prefs";
 const IMG_BASE = "https://image.tmdb.org/t/p";
 
 // Anime posters come from MyAnimeList as full URLs (https://...), so pass
@@ -38,6 +39,8 @@ function toQuery(path, params) {
 }
 
 export async function tmdb(path, params = {}) {
+  const lang = getPrefs().contentLanguage;
+  if (lang && lang !== "en-US" && params.language === undefined) params = { ...params, language: lang };
   let res;
   try {
     res = await cachedJson(`${API}/tmdb?${toQuery(path, params)}`, { method: "GET" }, TTL);

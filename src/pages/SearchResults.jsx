@@ -6,9 +6,12 @@ import TrackList from '@/components/TrackList';
 import { useMusicLibrary } from '@/lib/useMusicLibrary';
 import { Loader2 } from 'lucide-react';
 
+import { getPrefs } from '@/lib/prefs';
+
 const RECENT_KEY = 'sarmax_recent_searches';
 
 function saveRecentSearch(q) {
+  if (!getPrefs().saveSearchHistory) return;
   try {
     const list = JSON.parse(localStorage.getItem(RECENT_KEY) || '[]');
     const next = [q, ...list.filter((x) => x.toLowerCase() !== q.toLowerCase())].slice(0, 10);
