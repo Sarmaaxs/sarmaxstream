@@ -33,6 +33,7 @@ import { Navigate } from 'react-router-dom';
 import MusicLayout from '@/components/MusicLayout';
 const MusicHome = lazy(() => import('@/pages/MusicHome'));
 const Library = lazy(() => import('@/pages/Library'));
+const Downloads = lazy(() => import('@/pages/Downloads'));
 const PlaylistView = lazy(() => import('@/pages/PlaylistView'));
 const SearchResults = lazy(() => import('@/pages/SearchResults'));
 const Artist = lazy(() => import('@/pages/Artist'));
@@ -114,6 +115,7 @@ const AuthenticatedApp = () => {
         <Route path="settings" element={<MusicSettings />} />
         <Route element={<ProtectedRoute unauthenticatedElement={<Navigate to="/login" replace />} />}>
           <Route path="library" element={<Library />} />
+          <Route path="downloads" element={<Downloads />} />
           <Route path="playlist/:id" element={<PlaylistView />} />
         </Route>
       </Route>

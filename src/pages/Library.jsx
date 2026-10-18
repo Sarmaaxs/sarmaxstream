@@ -17,9 +17,12 @@ export default function Library() {
     <div className="space-y-6">
       <h1 className="text-2xl md:text-3xl font-bold">Your Library</h1>
 
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <button onClick={() => setTab('liked')} className={`px-4 py-2 rounded-xl text-sm glass ${tab === 'liked' ? 'text-primary border-primary/40' : 'text-white/70'}`}>Liked Songs</button>
         <button onClick={() => setTab('playlists')} className={`px-4 py-2 rounded-xl text-sm glass ${tab === 'playlists' ? 'text-primary border-primary/40' : 'text-white/70'}`}>Playlists</button>
+        <Link to="/music/downloads" className="px-4 py-2 rounded-xl text-sm glass text-white/70 hover:text-primary flex items-center gap-1.5">
+          <HardDrive size={14} /> Downloads
+        </Link>
       </div>
 
       {tab === 'liked' && (

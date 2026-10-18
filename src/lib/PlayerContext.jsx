@@ -30,13 +30,17 @@ function makeAudioEngine() {
   const el = new Audio();
   el.preload = 'auto';
   el.playsInline = true;
+  const resolveSrc = (idOrUrl) => {
+    if (typeof idOrUrl === 'string' && (idOrUrl.startsWith('blob:') || idOrUrl.startsWith('http') || idOrUrl.startsWith('/'))) return idOrUrl;
+    return streamUrl(idOrUrl);
+  };
   return {
     el,
-    loadVideoById(id) { el.src = streamUrl(id); el.load(); const p = el.play(); if (p && p.catch) p.catch(() => {}); },
+    loadVideoById(id) { el.src = resolveSrc(id); el.load(); const p = el.play(); if (p && p.catch) p.catch(() => {}); },
     cueVideoById(arg) {
       const id = typeof arg === 'string' ? arg : arg.videoId;
       const t = typeof arg === 'object' ? arg.startSeconds || 0 : 0;
-      el.src = streamUrl(id);
+      el.src = resolveSrc(id);
       el.load();
       if (t) el.addEventListener('loadedmetadata', () => { try { el.currentTime = t; } catch {} }, { once: true });
     },
@@ -158,8 +162,8 @@ export function PlayerProvider({ children }) {
   }, []);
 
   // Pick YouTube or <audio> for this track and silence the other one.
-  const switchEngine = useCallback((videoId) => {
-    const wantAudio = isAudioId(videoId);
+  const switchEngine = useCallback((videoId, offlineUrl) => {
+    const wantAudio = isAudioId(videoId) || !!offlineUrl;
     if (wantAudio) {
       try { ytRef.current && ytRef.current.pauseVideo && ytRef.current.pauseVideo(); } catch {}
       activeRef.current = 'audio';
@@ -217,13 +221,15 @@ export function PlayerProvider({ children }) {
       });
       return;
     }
-    switchEngine(track.videoId);
+    // Offline blob URL takes priority over streaming
+    const offline = track._offlineUrl || null;
+    switchEngine(track.videoId, offline);
     if (eng() && eng().loadVideoById) {
-      eng().loadVideoById(track.videoId);
+      eng().loadVideoById(offline || track.videoId);
       restoreVolume();
       setTimeout(() => { applyQuality(); applySpeed(); }, 400);
     }
-  }, [applyQuality, applySpeed, restoreVolume]);
+  }, [applyQuality, applySpeed, restoreVolume, switchEngine]);
 
   playAtRef.current = playAt;
   const next = useCallback(() => {

@@ -7,6 +7,8 @@ import ShareButton from '@/components/ShareButton';
 import LyricsView from '@/components/LyricsView';
 import Equalizer from '@/components/Equalizer';
 import { useSettings } from '@/lib/useSettings';
+import { isNative } from '@/lib/native';
+import { saveOffline, downloadFileToDevice, hasOffline } from '@/lib/offlineDownloads';
 import {
   ChevronDown, Play, Pause, SkipBack, SkipForward, Repeat, Shuffle,
   Heart, Loader2, Download,
@@ -56,8 +58,34 @@ async function resolveDownloadableId(track) {
 
   const res = await fetch(`/api/resolve?${qs}`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
   if (res && isAudioId(res.videoId)) return res.videoId;
-  // YouTube-only tracks can't be file-downloaded from this stack
   return null;
+}
+
+/** Fetch audio bytes via our server (proxies Cobalt so CORS never blocks). */
+async function downloadViaCobalt(track) {
+  const id = track.videoId || '';
+  const qs = new URLSearchParams();
+  if (/^[A-Za-z0-9_-]{11}$/.test(id)) qs.set('videoId', id);
+  else if (track.url) qs.set('url', track.url);
+  else if (id) qs.set('videoId', id);
+  qs.set('stream', '1');
+
+  const res = await fetch(`/api/downloadMusic?${qs}`, { method: 'GET' });
+  if (!res.ok) {
+    let msg = `download ${res.status}`;
+    try {
+      const j = await res.json();
+      if (j && j.error) msg = String(j.error);
+    } catch {}
+    throw new Error(msg);
+  }
+  const blob = await res.blob();
+  if (!blob || blob.size < 1024) throw new Error('empty audio');
+  let filename = safeFilename(track.title, track.artist).replace(/\.m4a$/i, '.mp3');
+  const cd = res.headers.get('content-disposition') || '';
+  const m = /filename="?([^";]+)"?/i.exec(cd);
+  if (m) filename = m[1];
+  return { blob, filename };
 }
 
 export default function NowPlaying() {
@@ -213,41 +241,34 @@ export default function NowPlaying() {
     if (!t || dlState === 'loading') return;
     setDlState('loading');
     try {
+      let blob = null;
+      let filename = safeFilename(t.title, t.artist).replace(/\.m4a$/i, '.mp3');
+
+      // 1) Prefer free Audius / Jamendo stream
       const audioId = await resolveDownloadableId(t);
-      if (!audioId) {
-        // YouTube-only or unresolved — no server-side file we can grab
-        setDlState('unsupported');
-        setTimeout(() => setDlState('idle'), 2800);
-        return;
+      if (audioId) {
+        const res = await fetch(`/api/stream?id=${encodeURIComponent(audioId)}`, { redirect: 'follow' });
+        if (!res.ok) throw new Error(`stream ${res.status}`);
+        blob = await res.blob();
+        if (!blob || blob.size < 1024) throw new Error('empty blob');
+        const ct = (res.headers.get('content-type') || '').toLowerCase();
+        if (ct.includes('mpeg') || ct.includes('mp3')) filename = filename.replace(/\.(m4a|ogg|wav)$/i, '.mp3');
+        else if (ct.includes('ogg')) filename = filename.replace(/\.(m4a|mp3)$/i, '.ogg');
+      } else {
+        // 2) Cobalt via our proxy (no CORS)
+        const { blob: b, filename: fn } = await downloadViaCobalt(t);
+        blob = b;
+        if (fn) filename = fn;
       }
 
-      // Same-origin request; browser follows the 302 to Audius/Jamendo
-      const res = await fetch(`/api/stream?id=${encodeURIComponent(audioId)}`, {
-        redirect: 'follow',
-      });
-      if (!res.ok) throw new Error(`stream ${res.status}`);
-
-      const blob = await res.blob();
-      if (!blob || blob.size < 1024) throw new Error('empty blob');
-
-      // Prefer real extension from content-type when possible
-      let name = safeFilename(t.title, t.artist);
-      const ct = (res.headers.get('content-type') || '').toLowerCase();
-      if (ct.includes('mpeg') || ct.includes('mp3')) name = name.replace(/\.m4a$/i, '.mp3');
-      else if (ct.includes('ogg')) name = name.replace(/\.m4a$/i, '.ogg');
-      else if (ct.includes('wav')) name = name.replace(/\.m4a$/i, '.wav');
-
-      const a = document.createElement('a');
-      a.href = URL.createObjectURL(blob);
-      a.download = name;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      // App: keep inside IndexedDB for offline play. Web: also save file to device.
+      await saveOffline(t, blob);
+      if (!isNative) {
+        downloadFileToDevice(blob, filename);
+      }
       setDlState('idle');
     } catch (e) {
       console.warn('Download failed', e);
-      // Last-resort: open the stream redirect in a new tab (user can save from there)
       try {
         const audioId = await resolveDownloadableId(t);
         if (audioId) {
@@ -268,10 +289,10 @@ export default function NowPlaying() {
 
   const dlTitle =
     dlState === 'error'
-      ? 'Download failed'
+      ? 'Download failed — try again'
       : dlState === 'unsupported'
-        ? 'Download only works for free (Audius/Jamendo) tracks'
-        : 'Download';
+        ? 'Download unavailable for this track'
+        : (isNative ? 'Save offline in app' : 'Download to device');
 
   return (
     <div
@@ -291,6 +312,8 @@ export default function NowPlaying() {
         style={{ '--c': color }}
         data-playing={p.isPlaying ? 'true' : 'false'}
       >
+        <i />
+        <i />
         <i />
         <i />
         <i />
