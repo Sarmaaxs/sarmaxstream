@@ -64,38 +64,35 @@ async function resolveDownloadableId(track) {
 /** Fetch audio bytes via our server (proxies Cobalt so CORS never blocks). */
 /** Fetch audio bytes via our server (proxies Cobalt — no CORS). */
 /** Ask our API for a Cobalt tunnel URL, then fetch the file in the browser (CORS is open). */
+/** Download audio via our proven same-origin proxy (works in browser + Capacitor). */
 async function downloadViaCobalt(track) {
   const id = String(track.videoId || '').trim();
-  const body = {};
-  if (/^[A-Za-z0-9_-]{11}$/.test(id)) body.videoId = id;
-  else if (track.url) body.url = track.url;
-  else if (id) body.videoId = id;
+  const qs = new URLSearchParams();
+  if (/^[A-Za-z0-9_-]{11}$/.test(id)) qs.set('videoId', id);
+  else if (track.url) qs.set('url', track.url);
+  else if (id) qs.set('videoId', id);
   else throw new Error('no video id');
+  qs.set('stream', '1');
 
-  const res = await fetch('/api/downloadMusic', {
-    method: 'POST',
-    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json().catch(() => null);
-  if (!res.ok || !data || data.status === 'error') {
-    throw new Error((data && (data.error?.code || data.error)) || `download ${res.status}`);
+  const url = `/api/downloadMusic?${qs}`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    let msg = `download ${res.status}`;
+    try {
+      const j = await res.json();
+      if (j && j.error) msg = String(j.error.code || j.error);
+    } catch {}
+    throw new Error(msg);
   }
-
-  let fileUrl = data.url;
-  let filename = data.filename || safeFilename(track.title, track.artist).replace(/\.m4a$/i, '.mp3');
-  if (!fileUrl && data.status === 'local-processing' && data.tunnel?.[0]) {
-    fileUrl = data.tunnel[0];
-    if (data.output?.filename) filename = data.output.filename;
-  }
-  if (!fileUrl) throw new Error('no tunnel url');
-
-  // Fetch from Cobalt tunnel in the browser (Access-Control-Allow-Origin: *)
-  const fr = await fetch(fileUrl);
-  if (!fr.ok) throw new Error(`tunnel ${fr.status}`);
-  const blob = await fr.blob();
+  const blob = await res.blob();
   if (!blob || blob.size < 1024) throw new Error('empty audio');
-  return { blob, filename };
+  let filename = safeFilename(track.title, track.artist).replace(/\.m4a$/i, '.mp3');
+  const cd = res.headers.get('content-disposition') || '';
+  const m = /filename\*?=(?:UTF-8''|")?([^\";]+)"?/i.exec(cd);
+  if (m) {
+    try { filename = decodeURIComponent(m[1].replace(/"/g, '')); } catch { filename = m[1]; }
+  }
+  return { blob, filename, url };
 }
 
 export default function NowPlaying() {
@@ -249,17 +246,18 @@ export default function NowPlaying() {
   //   GET /api/stream?id=aud_…|jam_…  → 302 to the real audio file
 
 
+
   const handleDownload = async () => {
     if (!t || dlState === 'loading') return;
     setDlState('loading');
     try {
       let blob = null;
       let filename = safeFilename(t.title, t.artist).replace(/\.m4a$/i, '.mp3');
+      let proxyUrl = null;
 
-      // Prefer free Audius/Jamendo when available
+      // 1) free Audius/Jamendo
       let audioId = null;
       try { audioId = await resolveDownloadableId(t); } catch {}
-
       if (audioId) {
         try {
           const res = await fetch(`/api/stream?id=${encodeURIComponent(audioId)}`, { redirect: 'follow' });
@@ -267,46 +265,50 @@ export default function NowPlaying() {
             const b = await res.blob();
             if (b && b.size >= 1024) {
               blob = b;
-              const ct = (res.headers.get('content-type') || '').toLowerCase();
-              if (ct.includes('mpeg') || ct.includes('mp3')) filename = filename.replace(/\.(m4a|ogg|wav)$/i, '.mp3');
+              proxyUrl = `/api/stream?id=${encodeURIComponent(audioId)}`;
             }
           }
         } catch (e) {
-          console.warn('free stream failed, trying cobalt', e);
+          console.warn('free stream failed', e);
         }
       }
 
-      // Cobalt (YouTube etc.) — works with your Railway instance
+      // 2) Cobalt via same-origin proxy (the URL that works when opened directly)
       if (!blob) {
         const r = await downloadViaCobalt(t);
         blob = r.blob;
-        if (r.filename) filename = r.filename;
+        filename = r.filename || filename;
+        proxyUrl = r.url;
       }
 
-      // Always save offline in-app storage
-      try { await saveOffline(t, blob); } catch (e) { console.warn('saveOffline', e); }
+      // Trigger a real browser/app download using same-origin URL (most reliable)
+      if (proxyUrl) {
+        const a = document.createElement('a');
+        a.href = proxyUrl;
+        a.download = filename;
+        a.rel = 'noopener';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      } else if (blob) {
+        downloadFileToDevice(blob, filename);
+      }
 
-      // Website: also save file to the phone/computer
-      // App: offline store is enough (check Library → Downloads)
+      // Also store offline for in-app Downloads page
       try {
-        if (!isNative) downloadFileToDevice(blob, filename);
-        else downloadFileToDevice(blob, filename); // also offer file share on Android WebView
+        if (blob) await saveOffline(t, blob);
       } catch (e) {
-        console.warn('file save', e);
+        console.warn('saveOffline', e);
       }
 
       setDlState('idle');
     } catch (e) {
       console.warn('Download failed', e);
       setDlState('error');
-      try {
-        const msg = (e && e.message) ? String(e.message) : 'Download failed';
-        // brief on-screen hint
-        if (typeof window !== 'undefined') window.__sarmaxDlErr = msg;
-      } catch {}
       setTimeout(() => setDlState('idle'), 3000);
     }
   };
+
 
 
 
