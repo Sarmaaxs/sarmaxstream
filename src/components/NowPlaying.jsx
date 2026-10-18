@@ -65,34 +65,16 @@ async function resolveDownloadableId(track) {
 /** Fetch audio bytes via our server (proxies Cobalt — no CORS). */
 /** Ask our API for a Cobalt tunnel URL, then fetch the file in the browser (CORS is open). */
 /** Download audio via our proven same-origin proxy (works in browser + Capacitor). */
-async function downloadViaCobalt(track) {
+/** Same URL that works when opened directly in the browser. */
+function cobaltDownloadUrl(track) {
   const id = String(track.videoId || '').trim();
   const qs = new URLSearchParams();
   if (/^[A-Za-z0-9_-]{11}$/.test(id)) qs.set('videoId', id);
   else if (track.url) qs.set('url', track.url);
   else if (id) qs.set('videoId', id);
-  else throw new Error('no video id');
+  else return null;
   qs.set('stream', '1');
-
-  const url = `/api/downloadMusic?${qs}`;
-  const res = await fetch(url);
-  if (!res.ok) {
-    let msg = `download ${res.status}`;
-    try {
-      const j = await res.json();
-      if (j && j.error) msg = String(j.error.code || j.error);
-    } catch {}
-    throw new Error(msg);
-  }
-  const blob = await res.blob();
-  if (!blob || blob.size < 1024) throw new Error('empty audio');
-  let filename = safeFilename(track.title, track.artist).replace(/\.m4a$/i, '.mp3');
-  const cd = res.headers.get('content-disposition') || '';
-  const m = /filename\*?=(?:UTF-8''|")?([^\";]+)"?/i.exec(cd);
-  if (m) {
-    try { filename = decodeURIComponent(m[1].replace(/"/g, '')); } catch { filename = m[1]; }
-  }
-  return { blob, filename, url };
+  return `/api/downloadMusic?${qs.toString()}`;
 }
 
 export default function NowPlaying() {
@@ -247,59 +229,42 @@ export default function NowPlaying() {
 
 
 
+
   const handleDownload = async () => {
     if (!t || dlState === 'loading') return;
     setDlState('loading');
     try {
-      let blob = null;
-      let filename = safeFilename(t.title, t.artist).replace(/\.m4a$/i, '.mp3');
-      let proxyUrl = null;
-
-      // 1) free Audius/Jamendo
-      let audioId = null;
-      try { audioId = await resolveDownloadableId(t); } catch {}
-      if (audioId) {
-        try {
-          const res = await fetch(`/api/stream?id=${encodeURIComponent(audioId)}`, { redirect: 'follow' });
-          if (res.ok) {
-            const b = await res.blob();
-            if (b && b.size >= 1024) {
-              blob = b;
-              proxyUrl = `/api/stream?id=${encodeURIComponent(audioId)}`;
-            }
-          }
-        } catch (e) {
-          console.warn('free stream failed', e);
-        }
-      }
-
-      // 2) Cobalt via same-origin proxy (the URL that works when opened directly)
-      if (!blob) {
-        const r = await downloadViaCobalt(t);
-        blob = r.blob;
-        filename = r.filename || filename;
-        proxyUrl = r.url;
-      }
-
-      // Trigger a real browser/app download using same-origin URL (most reliable)
-      if (proxyUrl) {
-        const a = document.createElement('a');
-        a.href = proxyUrl;
-        a.download = filename;
-        a.rel = 'noopener';
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-      } else if (blob) {
-        downloadFileToDevice(blob, filename);
-      }
-
-      // Also store offline for in-app Downloads page
+      // 1) free Audius/Jamendo stream URL
+      let url = null;
       try {
-        if (blob) await saveOffline(t, blob);
-      } catch (e) {
-        console.warn('saveOffline', e);
+        const audioId = await resolveDownloadableId(t);
+        if (audioId) url = `/api/stream?id=${encodeURIComponent(audioId)}`;
+      } catch {}
+
+      // 2) Cobalt proxy — EXACT same URL as the link that works in the browser
+      if (!url) {
+        url = cobaltDownloadUrl(t);
       }
+      if (!url) throw new Error('no download url');
+
+      // Do NOT fetch the whole file in JS — just open the URL (like pasting it in the address bar)
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = safeFilename(t.title, t.artist).replace(/\.m4a$/i, '.mp3');
+      a.rel = 'noopener';
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      // Mobile WebView / in-app: force navigation if <a download> is ignored
+      setTimeout(() => {
+        try {
+          // only fallback if still on same page
+          if (document.visibilityState === 'visible') {
+            window.location.href = url;
+          }
+        } catch {}
+      }, 400);
 
       setDlState('idle');
     } catch (e) {
@@ -308,6 +273,7 @@ export default function NowPlaying() {
       setTimeout(() => setDlState('idle'), 3000);
     }
   };
+
 
 
 
