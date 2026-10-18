@@ -3,7 +3,7 @@
 // ?stream=1  -> proxies audio bytes (avoids Cobalt CORS)
 import { rateLimit, parseBody } from './_guard.js';
 
-const DEFAULT_API = 'https://api.cobalt.tools';
+const DEFAULT_API = 'https://cobalt-tools-production-0cd6.up.railway.app';
 const YT_ID = /^[A-Za-z0-9_-]{11}$/;
 
 function buildYoutubeUrl(idOrUrl) {
