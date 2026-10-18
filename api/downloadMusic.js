@@ -1,14 +1,6 @@
 // api/downloadMusic.js
-// POST /api/downloadMusic  { url | videoId, title?, artist? }
-// GET  /api/downloadMusic?url=... | ?videoId=...
-//
-// Proxies to https://api.cobalt.tools (Cobalt-style) so the Api-Key stays
-// on the server. Returns a short-lived tunnel/redirect URL the browser can
-// fetch as a blob for download. Optimized for audio (mp3).
-//
-// Env: REALMUSIC_API_KEY  (required) — Authorization: Api-Key <key>
-// Optional: REALMUSIC_API_URL  (default https://api.cobalt.tools)
-
+// POST { url | videoId } -> cobalt JSON (tunnel/redirect)
+// GET  ?url=...&stream=1  -> proxies the audio bytes (no CORS)
 import { rateLimit, parseBody } from './_guard.js';
 
 const DEFAULT_API = 'https://api.cobalt.tools';
@@ -22,70 +14,93 @@ function buildYoutubeUrl(idOrUrl) {
     const u = new URL(s);
     if (u.hostname.includes('youtu')) return s;
   } catch {}
-  // Accept plain id that might have been passed as videoId
-  if (/^[A-Za-z0-9_-]{11}$/.test(s)) return `https://www.youtube.com/watch?v=${s}`;
   return null;
+}
+
+async function callCobalt(youtubeUrl, key, extra = {}) {
+  const apiBase = (process.env.REALMUSIC_API_URL || DEFAULT_API).replace(/\/$/, '');
+  const payload = {
+    url: youtubeUrl,
+    downloadMode: 'audio',
+    audioFormat: extra.audioFormat || 'mp3',
+    audioBitrate: extra.audioBitrate || '128',
+    filenameStyle: 'pretty',
+    disableMetadata: false,
+  };
+  const headers = {
+    Accept: 'application/json',
+    'Content-Type': 'application/json',
+  };
+  if (key) headers.Authorization = `Api-Key ${key}`;
+
+  const r = await fetch(`${apiBase}/`, {
+    method: 'POST',
+    headers,
+    body: JSON.stringify(payload),
+    signal: AbortSignal.timeout(25000),
+  });
+  const data = await r.json().catch(() => null);
+  return { ok: r.ok, status: r.status, data };
 }
 
 export default async function handler(req, res) {
   if (!rateLimit(req, res, { name: 'downloadMusic', max: 30, windowMs: 60 * 1000 })) return;
 
-  const key = process.env.REALMUSIC_API_KEY;
-  if (!key) {
-    res.setHeader('Cache-Control', 'no-store');
-    return res.status(503).json({ error: 'Download service not configured', status: 'error' });
-  }
-
+  const key = process.env.REALMUSIC_API_KEY || '';
   const body = parseBody(req);
   const rawUrl = body.url || body.videoId || (req.query && (req.query.url || req.query.videoId)) || '';
   const youtubeUrl = buildYoutubeUrl(rawUrl);
 
   if (!youtubeUrl) {
     res.setHeader('Cache-Control', 'no-store');
-    return res.status(400).json({ error: 'Provide a YouTube url or 11-char videoId', status: 'error' });
+    return res.status(400).json({ error: 'Provide a YouTube url or videoId', status: 'error' });
   }
 
-  const apiBase = (process.env.REALMUSIC_API_URL || DEFAULT_API).replace(/\/$/, '');
-  const payload = {
-    url: youtubeUrl,
-    downloadMode: 'audio',
-    audioFormat: body.audioFormat || 'mp3',
-    audioBitrate: body.audioBitrate || '128',
-    filenameStyle: 'pretty',
-    disableMetadata: false,
-    alwaysProxy: false,
-  };
-
-  // Optional extras from client
-  if (body.youtubeBetterAudio) payload.youtubeBetterAudio = true;
-  if (body.youtubeDubLang) payload.youtubeDubLang = String(body.youtubeDubLang).slice(0, 5);
+  // Stream mode: resolve + proxy bytes so the browser never hits Cobalt CORS
+  const wantStream = (req.query && req.query.stream === '1') || body.stream === true;
 
   try {
-    const r = await fetch(`${apiBase}/`, {
-      method: 'POST',
-      headers: {
-        Accept: 'application/json',
-        'Content-Type': 'application/json',
-        Authorization: `Api-Key ${key}`,
-      },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(25000),
-    });
-
-    const data = await r.json().catch(() => null);
-
-    if (!r.ok || !data) {
+    const { ok, status, data } = await callCobalt(youtubeUrl, key, body);
+    if (!ok || !data || data.status === 'error') {
       res.setHeader('Cache-Control', 'no-store');
-      return res.status(r.status >= 400 && r.status < 600 ? r.status : 502).json({
+      return res.status(status >= 400 ? status : 502).json({
         status: 'error',
-        error: (data && data.error && data.error.code) || `Upstream ${r.status}`,
-        context: data && data.error && data.error.context,
+        error: (data && data.error && (data.error.code || data.error)) || `Upstream ${status}`,
       });
     }
 
-    // Pass through the cobalt-style response so the client can act on tunnel / redirect / error
-    res.setHeader('Cache-Control', 'private, no-store'); // tunnel URLs are short-lived
-    return res.status(200).json(data);
+    let fileUrl = null;
+    let filename = data.filename || 'track.mp3';
+    if ((data.status === 'tunnel' || data.status === 'redirect') && data.url) {
+      fileUrl = data.url;
+    } else if (data.status === 'local-processing' && data.tunnel && data.tunnel[0]) {
+      fileUrl = data.tunnel[0];
+      if (data.output && data.output.filename) filename = data.output.filename;
+    }
+
+    if (!fileUrl) {
+      res.setHeader('Cache-Control', 'no-store');
+      return res.status(502).json({ status: 'error', error: 'no file url from cobalt' });
+    }
+
+    if (!wantStream) {
+      res.setHeader('Cache-Control', 'private, no-store');
+      return res.status(200).json({ ...data, url: fileUrl, filename });
+    }
+
+    // Proxy the audio
+    const fr = await fetch(fileUrl, { signal: AbortSignal.timeout(60000) });
+    if (!fr.ok) {
+      res.setHeader('Cache-Control', 'no-store');
+      return res.status(502).json({ status: 'error', error: `file ${fr.status}` });
+    }
+    const buf = Buffer.from(await fr.arrayBuffer());
+    const ct = fr.headers.get('content-type') || 'audio/mpeg';
+    res.setHeader('Cache-Control', 'private, no-store');
+    res.setHeader('Content-Type', ct);
+    res.setHeader('Content-Disposition', `attachment; filename="${filename.replace(/"/g, '')}"`);
+    res.setHeader('Content-Length', String(buf.length));
+    return res.status(200).send(buf);
   } catch (e) {
     res.setHeader('Cache-Control', 'no-store');
     return res.status(504).json({

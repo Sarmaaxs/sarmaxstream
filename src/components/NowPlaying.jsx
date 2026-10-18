@@ -61,37 +61,31 @@ async function resolveDownloadableId(track) {
   return null;
 }
 
-/** Download via Cobalt-style proxy (YouTube / any supported service). Returns {url, filename}. */
+/** Fetch audio bytes via our server (proxies Cobalt so CORS never blocks). */
 async function downloadViaCobalt(track) {
   const id = track.videoId || '';
-  const body = { videoId: id, title: track.title, artist: track.artist };
-  if (!/^[A-Za-z0-9_-]{11}$/.test(id) && track.url) body.url = track.url;
+  const qs = new URLSearchParams();
+  if (/^[A-Za-z0-9_-]{11}$/.test(id)) qs.set('videoId', id);
+  else if (track.url) qs.set('url', track.url);
+  else if (id) qs.set('videoId', id);
+  qs.set('stream', '1');
 
-  const res = await fetch('/api/downloadMusic', {
-    method: 'POST',
-    headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
-    body: JSON.stringify(body),
-  });
-  const data = await res.json().catch(() => null);
-  if (!res.ok || !data || data.status === 'error') {
-    throw new Error((data && data.error) || `download ${res.status}`);
+  const res = await fetch(`/api/downloadMusic?${qs}`, { method: 'GET' });
+  if (!res.ok) {
+    let msg = `download ${res.status}`;
+    try {
+      const j = await res.json();
+      if (j && j.error) msg = String(j.error);
+    } catch {}
+    throw new Error(msg);
   }
-
-  // tunnel or redirect → direct file URL
-  if ((data.status === 'tunnel' || data.status === 'redirect') && data.url) {
-    return {
-      url: data.url,
-      filename: data.filename || safeFilename(track.title, track.artist).replace(/\.m4a$/i, '.mp3'),
-    };
-  }
-
-  // local-processing: pick the first tunnel
-  if (data.status === 'local-processing' && Array.isArray(data.tunnel) && data.tunnel[0]) {
-    const fn = (data.output && data.output.filename) || safeFilename(track.title, track.artist).replace(/\.m4a$/i, '.mp3');
-    return { url: data.tunnel[0], filename: fn };
-  }
-
-  throw new Error('unsupported response from download service');
+  const blob = await res.blob();
+  if (!blob || blob.size < 1024) throw new Error('empty audio');
+  let filename = safeFilename(track.title, track.artist).replace(/\.m4a$/i, '.mp3');
+  const cd = res.headers.get('content-disposition') || '';
+  const m = /filename="?([^";]+)"?/i.exec(cd);
+  if (m) filename = m[1];
+  return { blob, filename };
 }
 
 export default function NowPlaying() {
@@ -261,12 +255,9 @@ export default function NowPlaying() {
         if (ct.includes('mpeg') || ct.includes('mp3')) filename = filename.replace(/\.(m4a|ogg|wav)$/i, '.mp3');
         else if (ct.includes('ogg')) filename = filename.replace(/\.(m4a|mp3)$/i, '.ogg');
       } else {
-        // 2) Cobalt proxy for YouTube etc.
-        const { url, filename: fn } = await downloadViaCobalt(t);
-        const res = await fetch(url, { redirect: 'follow' });
-        if (!res.ok) throw new Error(`tunnel ${res.status}`);
-        blob = await res.blob();
-        if (!blob || blob.size < 1024) throw new Error('empty blob');
+        // 2) Cobalt via our proxy (no CORS)
+        const { blob: b, filename: fn } = await downloadViaCobalt(t);
+        blob = b;
         if (fn) filename = fn;
       }
 
