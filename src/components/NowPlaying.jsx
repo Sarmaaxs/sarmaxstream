@@ -311,11 +311,14 @@ export default function NowPlaying() {
       if (!blob && !ytId) {
         const alt = await resolveDownloadableId(t, { skipFree: true, forceResolve: true }).catch(() => null);
         if (alt && alt.kind === 'yt') ytId = alt.id;
+        else errors.push('resolve: no YouTube match found');
       }
 
       // 2) Android app: download on the phone itself (its own IP is not blocked)
       if (!blob && ytId && isNative && deviceDownloadAvailable()) {
         try { blob = await downloadYoutubeOnDevice(ytId); } catch (e) { errors.push(`phone: ${e.message || e}`); }
+      } else if (!blob && ytId && isNative) {
+        errors.push('phone: native http missing');
       }
 
       // 3) our server (Cobalt)
@@ -324,7 +327,7 @@ export default function NowPlaying() {
       }
 
       if (!blob) {
-        throw new Error(errors.length ? errors[errors.length - 1] : 'No downloadable source found for this song');
+        throw new Error(`[${isNative ? 'app' : 'web'}] ${errors.length ? errors.join(' | ') : 'no source found for this song'}`);
       }
 
       if (isNative) {
@@ -341,9 +344,9 @@ export default function NowPlaying() {
       setTimeout(() => { setDlState('idle'); setDlMsg(''); }, 3500);
     } catch (e) {
       console.warn('Download failed', e, errors);
-      setDlMsg(`Couldn't download: ${String((e && e.message) || e).slice(0, 110)}`);
+      setDlMsg(`Couldn't download: ${String((e && e.message) || e).slice(0, 260)}`);
       setDlState('error');
-      setTimeout(() => { setDlState('idle'); setDlMsg(''); }, 6000);
+      setTimeout(() => { setDlState('idle'); setDlMsg(''); }, 15000);
     }
   };
 
@@ -437,7 +440,7 @@ export default function NowPlaying() {
         </div>
 
         {dlMsg && (dlState === 'error' || dlState === 'done') && (
-          <div className="fixed left-1/2 -translate-x-1/2 top-20 z-[70] max-w-[90%] px-4 py-2 rounded-full bg-black/80 text-white text-xs text-center shadow-lg">
+          <div className="fixed left-1/2 -translate-x-1/2 top-20 z-[70] max-w-[90%] px-4 py-2 rounded-2xl bg-black/85 text-white text-xs text-center shadow-lg break-words">
             {dlMsg}
           </div>
         )}
