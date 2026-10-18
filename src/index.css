@@ -1,0 +1,402 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 240 10% 3.5%;
+    --foreground: 0 0% 100%;
+    --card: 240 8% 6%;
+    --card-foreground: 0 0% 100%;
+    --popover: 240 8% 6%;
+    --popover-foreground: 0 0% 100%;
+    --primary: 72 100% 55%;
+    --primary-foreground: 240 10% 3.5%;
+    --secondary: 240 5% 12%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 5% 12%;
+    --muted-foreground: 240 5% 65%;
+    --accent: 270 100% 50%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 5% 14%;
+    --input: 240 5% 14%;
+    --ring: 72 100% 55%;
+    --chart-1: 72 100% 55%;
+    --chart-2: 270 100% 50%;
+    --chart-3: 197 37% 50%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+    --radius: 0.75rem;
+    --bottom-nav-h: 3.5rem;
+    --font-heading: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+    --font-body: 'Inter', ui-sans-serif, system-ui, sans-serif;
+    --font-display: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+    --sidebar-background: 240 10% 3.5%;
+    --sidebar-foreground: 240 5% 65%;
+    --sidebar-primary: 72 100% 55%;
+    --sidebar-primary-foreground: 240 10% 3.5%;
+    --sidebar-accent: 240 5% 12%;
+    --sidebar-accent-foreground: 0 0% 98%;
+    --sidebar-border: 240 5% 14%;
+    --sidebar-ring: 72 100% 55%;
+  }
+
+  .dark {
+    --background: 240 10% 3.5%;
+    --foreground: 0 0% 100%;
+    --card: 240 8% 6%;
+    --card-foreground: 0 0% 100%;
+    --popover: 240 8% 6%;
+    --popover-foreground: 0 0% 100%;
+    --primary: 72 100% 55%;
+    --primary-foreground: 240 10% 3.5%;
+    --secondary: 240 5% 12%;
+    --secondary-foreground: 0 0% 98%;
+    --muted: 240 5% 12%;
+    --muted-foreground: 240 5% 65%;
+    --accent: 270 100% 50%;
+    --accent-foreground: 0 0% 100%;
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 240 5% 14%;
+    --input: 240 5% 14%;
+    --ring: 72 100% 55%;
+    --chart-1: 72 100% 55%;
+    --chart-2: 270 100% 50%;
+    --chart-3: 197 37% 50%;
+    --chart-4: 43 74% 66%;
+    --chart-5: 27 87% 67%;
+    --sidebar-background: 240 10% 3.5%;
+    --sidebar-foreground: 240 5% 65%;
+    --sidebar-primary: 72 100% 55%;
+    --sidebar-primary-foreground: 240 10% 3.5%;
+    --sidebar-accent: 240 5% 12%;
+    --sidebar-accent-foreground: 0 0% 98%;
+    --sidebar-border: 240 5% 14%;
+    --sidebar-ring: 72 100% 55%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  html {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-background text-foreground font-body antialiased;
+  }
+
+  /* Native-app feel inside a WebView: chrome, controls and artwork shouldn't be
+     text-selectable. `user-select: auto` resolves to `none` under a `none`
+     ancestor, so these cover their children too. */
+  button,
+  [role="button"],
+  header,
+  nav,
+  img {
+    -webkit-user-select: none;
+    user-select: none;
+  }
+
+  /* ...but form fields must stay editable (WebKit can't type into an input
+     that inherits user-select: none). Declared after the rule above. */
+  input,
+  textarea,
+  [contenteditable="true"] {
+    -webkit-user-select: text;
+    user-select: text;
+  }
+
+  button,
+  a,
+  [role="button"] {
+    -webkit-tap-highlight-color: transparent;
+  }
+}
+
+@layer utilities {
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .glass {
+    background: rgba(255, 255, 255, 0.03);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+  }
+  .glass-strong {
+    background: rgba(11, 13, 18, 0.72);
+    backdrop-filter: blur(26px) saturate(150%);
+    -webkit-backdrop-filter: blur(26px) saturate(150%);
+    border: 1px solid hsl(var(--border) / 0.8);
+  }
+  .glass-hover {
+    transition: background 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
+  }
+  .glass-hover:hover {
+    background: rgba(255, 255, 255, 0.07);
+    border-color: hsl(var(--primary) / 0.45);
+  }
+  .text-balance {
+    text-wrap: balance;
+  }
+
+  /* Animated button primitives — see src/components/AnimatedButton.jsx */
+  .anim-btn {
+    position: relative;
+    transition: transform 0.15s cubic-bezier(0.34, 1.56, 0.64, 1), box-shadow 0.2s ease, background 0.2s ease;
+    transform: translateZ(0);
+  }
+  .anim-btn:hover { transform: translateY(-1px) scale(1.015); }
+  .anim-btn:active { transform: translateY(0) scale(0.96); transition-duration: 0.08s; }
+  .anim-btn-inner { display: inline-flex; align-items: center; gap: 0.5rem; }
+  .anim-btn-primary:hover {
+    box-shadow: 0 0 0 1px hsl(var(--primary) / 0.5), 0 8px 24px -8px hsl(var(--primary) / 0.55);
+  }
+  .anim-btn-icon { border-radius: 9999px; }
+  .anim-btn-icon:hover { box-shadow: 0 0 0 6px hsl(var(--primary) / 0.12); }
+  .anim-btn-icon:active { transform: scale(0.88); }
+  @media (prefers-reduced-motion: reduce) {
+    .anim-btn, .anim-btn:hover, .anim-btn:active { transition: none !important; transform: none !important; }
+  }
+
+  /* Safe-area offsets (notch / home indicator). They resolve to 0 wherever the
+     viewport has no insets, and rely on `viewport-fit=cover` in index.html. */
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  /* Top padding that clears the fixed 4rem navbar (+ its safe-area inset). */
+  .pt-nav {
+    padding-top: calc(6rem + env(safe-area-inset-top, 0px));
+  }
+  /* Bottom padding for page content; on mobile it also clears the fixed tab bar. */
+  .pb-page {
+    padding-bottom: 6rem;
+  }
+  @media (max-width: 767px) {
+    .pb-page {
+      padding-bottom: calc(var(--bottom-nav-h) + env(safe-area-inset-bottom, 0px) + 2rem);
+    }
+  }
+  /* When the mini player is showing, leave room for it too (it sits above the tab bar on phones). */
+  .pb-player {
+    padding-bottom: 8rem;
+  }
+  @media (max-width: 767px) {
+    .pb-player {
+      padding-bottom: calc(var(--bottom-nav-h) + env(safe-area-inset-bottom, 0px) + 6rem);
+    }
+  }
+  /* Mini player: above the tab bar on phones, flush to the bottom on desktop. */
+  .player-bar-pos {
+    bottom: calc(var(--bottom-nav-h) + env(safe-area-inset-bottom, 0px));
+  }
+  @media (min-width: 768px) {
+    .player-bar-pos { bottom: 0; }
+  }
+}
+
+
+/* ====== Auth screens (login / register / reset): calm split layout, one short fade ====== */
+.auth-fade { animation: auth-fade .35s ease-out both; }
+@keyframes auth-fade { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { html:not(.full-motion) .auth-fade { animation: none; } }
+
+/* ====== Settings -> Animations: "Reduced" ====== */
+html.reduce-motion *, html.reduce-motion *::before, html.reduce-motion *::after {
+  animation-duration: .001ms !important;
+  animation-iteration-count: 1 !important;
+  transition-duration: .001ms !important;
+  scroll-behavior: auto !important;
+}
+
+
+/* ====== Full-screen player: slides up from the mini player, slides down when closed ====== */
+@keyframes np-up { from { transform: translateY(100%); } to { transform: translateY(0); } }
+@keyframes np-down { from { transform: translateY(0); } to { transform: translateY(100%); } }
+.np-in { animation: np-up 320ms cubic-bezier(0.2, 0.8, 0.2, 1) both; }
+.np-out { animation: np-down 260ms cubic-bezier(0.4, 0, 1, 1) both; }
+@media (prefers-reduced-motion: reduce) { .np-in, .np-out { animation: none; } }
+
+/* ====== Nuvessia upgrade: karaoke lyrics, moving colour glow, equalizer ====== */
+
+/* Words fill with colour from left to right as they are sung (--f goes 0 to 1, set from JS) */
+.ly-word {
+  display: inline-block;
+  padding-bottom: 0.08em;
+  background: linear-gradient(90deg, #fff calc(var(--f, 0) * 114% - 14%), rgba(255, 255, 255, 0.38) calc(var(--f, 0) * 114%));
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+/* instrumental gap: three breathing dots */
+.ly-dots { display: inline-flex; gap: 8px; align-items: center; height: 1em; }
+.ly-dots i { width: 0.5em; height: 0.5em; border-radius: 9999px; background: #fff; animation: ly-breathe 1.6s ease-in-out infinite; }
+.ly-dots i:nth-child(2) { animation-delay: 0.2s; }
+.ly-dots i:nth-child(3) { animation-delay: 0.4s; }
+@keyframes ly-breathe { 0%, 100% { opacity: 0.3; transform: scale(0.75); } 50% { opacity: 1; transform: scale(1.1); } }
+
+/* Full-screen player: colour glows that drift around while music plays */
+.np-aurora { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.np-aurora i {
+  position: absolute;
+  width: 90vmax;
+  height: 90vmax;
+  border-radius: 9999px;
+  will-change: transform;
+  animation: np-drift-a 22s ease-in-out infinite alternate;
+  animation-play-state: paused;
+}
+.np-aurora[data-playing="true"] i { animation-play-state: running; }
+.np-aurora i:nth-child(1) { top: -35%; left: -30%; background: radial-gradient(circle, color-mix(in srgb, var(--c) 45%, #fff) 0%, transparent 62%); opacity: 0.55; }
+.np-aurora i:nth-child(2) { bottom: -40%; right: -35%; background: radial-gradient(circle, color-mix(in srgb, var(--c) 70%, #fff) 0%, transparent 62%); opacity: 0.4; animation-name: np-drift-b; animation-duration: 28s; }
+.np-aurora i:nth-child(3) { top: 10%; left: 20%; background: radial-gradient(circle, color-mix(in srgb, var(--c) 80%, #000) 0%, transparent 60%); opacity: 0.6; animation-name: np-drift-c; animation-duration: 34s; }
+@keyframes np-drift-a { 0% { transform: translate(0, 0) scale(1); } 100% { transform: translate(28%, 22%) scale(1.25); } }
+@keyframes np-drift-b { 0% { transform: translate(0, 0) scale(1.1); } 100% { transform: translate(-30%, -24%) scale(0.9); } }
+@keyframes np-drift-c { 0% { transform: translate(-10%, 0) scale(0.9); } 100% { transform: translate(18%, -20%) scale(1.3); } }
+
+/* Equalizer bars */
+.eq { display: inline-flex; align-items: flex-end; gap: 2px; height: 14px; width: 16px; }
+.eq i { flex: 1; height: 30%; border-radius: 1px; background: currentColor; animation: eq-bounce 900ms ease-in-out infinite; animation-play-state: paused; }
+.eq-on i { animation-play-state: running; }
+.eq i:nth-child(1) { animation-duration: 820ms; }
+.eq i:nth-child(2) { animation-duration: 640ms; animation-delay: -200ms; }
+.eq i:nth-child(3) { animation-duration: 960ms; animation-delay: -420ms; }
+.eq i:nth-child(4) { animation-duration: 720ms; animation-delay: -100ms; }
+@keyframes eq-bounce { 0%, 100% { height: 25%; } 50% { height: 100%; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .np-aurora i, .eq i, .ly-dots i { animation: none !important; }
+  .eq i { height: 60%; }
+}
+
+/* ====== Sarmaxstream upgrade: moving colour glow, equalizer ====== */
+.np-aurora { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.np-aurora i {
+  position: absolute;
+  width: 90vmax;
+  height: 90vmax;
+  border-radius: 9999px;
+  will-change: transform;
+  animation: np-drift-a 22s ease-in-out infinite alternate;
+  animation-play-state: paused;
+}
+.np-aurora[data-playing="true"] i { animation-play-state: running; }
+.np-aurora i:nth-child(1) { top: -35%; left: -30%; background: radial-gradient(circle, color-mix(in srgb, var(--c) 45%, #fff) 0%, transparent 62%); opacity: 0.55; }
+.np-aurora i:nth-child(2) { bottom: -40%; right: -35%; background: radial-gradient(circle, color-mix(in srgb, var(--c) 70%, #fff) 0%, transparent 62%); opacity: 0.4; animation-name: np-drift-b; animation-duration: 28s; }
+.np-aurora i:nth-child(3) { top: 10%; left: 20%; background: radial-gradient(circle, color-mix(in srgb, var(--c) 80%, #000) 0%, transparent 60%); opacity: 0.6; animation-name: np-drift-c; animation-duration: 34s; }
+@keyframes np-drift-a { 0% { transform: translate(0, 0) scale(1); } 100% { transform: translate(28%, 22%) scale(1.25); } }
+@keyframes np-drift-b { 0% { transform: translate(0, 0) scale(1.1); } 100% { transform: translate(-30%, -24%) scale(0.9); } }
+@keyframes np-drift-c { 0% { transform: translate(-10%, 0) scale(0.9); } 100% { transform: translate(18%, -20%) scale(1.3); } }
+
+.eq { display: inline-flex; align-items: flex-end; gap: 2px; height: 14px; width: 16px; }
+.eq i { flex: 1; height: 30%; border-radius: 1px; background: currentColor; animation: eq-bounce 900ms ease-in-out infinite; animation-play-state: paused; }
+.eq-on i { animation-play-state: running; }
+.eq i:nth-child(1) { animation-duration: 820ms; }
+.eq i:nth-child(2) { animation-duration: 640ms; animation-delay: -200ms; }
+.eq i:nth-child(3) { animation-duration: 960ms; animation-delay: -420ms; }
+.eq i:nth-child(4) { animation-duration: 720ms; animation-delay: -100ms; }
+@keyframes eq-bounce { 0%, 100% { height: 25%; } 50% { height: 100%; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .np-aurora i, .eq i { animation: none !important; }
+  .eq i { height: 60%; }
+}
+
+/* ====== Sarmaxstream upgrade v2 (aurora + fixed download) ====== */
+.np-aurora { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+.np-aurora i {
+  position: absolute;
+  width: 90vmax;
+  height: 90vmax;
+  border-radius: 9999px;
+  will-change: transform;
+  animation: np-drift-a 22s ease-in-out infinite alternate;
+  animation-play-state: paused;
+}
+.np-aurora[data-playing="true"] i { animation-play-state: running; }
+.np-aurora i:nth-child(1) {
+  top: -35%; left: -30%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--c) 45%, #fff) 0%, transparent 62%);
+  opacity: 0.55;
+}
+.np-aurora i:nth-child(2) {
+  bottom: -40%; right: -35%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--c) 70%, #fff) 0%, transparent 62%);
+  opacity: 0.4;
+  animation-name: np-drift-b;
+  animation-duration: 28s;
+}
+.np-aurora i:nth-child(3) {
+  top: 10%; left: 20%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--c) 80%, #000) 0%, transparent 60%);
+  opacity: 0.6;
+  animation-name: np-drift-c;
+  animation-duration: 34s;
+}
+@keyframes np-drift-a { 0% { transform: translate(0, 0) scale(1); } 100% { transform: translate(28%, 22%) scale(1.25); } }
+@keyframes np-drift-b { 0% { transform: translate(0, 0) scale(1.1); } 100% { transform: translate(-30%, -24%) scale(0.9); } }
+@keyframes np-drift-c { 0% { transform: translate(-10%, 0) scale(0.9); } 100% { transform: translate(18%, -20%) scale(1.3); } }
+
+.eq { display: inline-flex; align-items: flex-end; gap: 2px; height: 14px; width: 16px; }
+.eq i {
+  flex: 1; height: 30%; border-radius: 1px; background: currentColor;
+  animation: eq-bounce 900ms ease-in-out infinite; animation-play-state: paused;
+}
+.eq-on i { animation-play-state: running; }
+.eq i:nth-child(1) { animation-duration: 820ms; }
+.eq i:nth-child(2) { animation-duration: 640ms; animation-delay: -200ms; }
+.eq i:nth-child(3) { animation-duration: 960ms; animation-delay: -420ms; }
+.eq i:nth-child(4) { animation-duration: 720ms; animation-delay: -100ms; }
+@keyframes eq-bounce { 0%, 100% { height: 25%; } 50% { height: 100%; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .np-aurora i, .eq i { animation: none !important; }
+  .eq i { height: 60%; }
+}
+
+
+/* ===== Offline downloads + richer lyrics aurora ===== */
+.np-aurora i:nth-child(4) {
+  top: 40%; right: -20%;
+  width: 70vmax; height: 70vmax;
+  background: radial-gradient(circle, color-mix(in srgb, var(--c) 55%, #fff) 0%, transparent 65%);
+  opacity: 0.35;
+  animation-name: np-drift-d;
+  animation-duration: 22s;
+}
+.np-aurora i:nth-child(5) {
+  bottom: -25%; left: 30%;
+  width: 55vmax; height: 55vmax;
+  background: radial-gradient(circle, color-mix(in srgb, var(--c) 90%, #f0f) 0%, transparent 60%);
+  opacity: 0.3;
+  animation-name: np-drift-e;
+  animation-duration: 40s;
+}
+@keyframes np-drift-d {
+  0%   { transform: translate(0, 0) scale(1) rotate(0deg); }
+  100% { transform: translate(-25%, 15%) scale(1.35) rotate(25deg); }
+}
+@keyframes np-drift-e {
+  0%   { transform: translate(0, 0) scale(1.1) rotate(0deg); }
+  100% { transform: translate(20%, -30%) scale(0.85) rotate(-20deg); }
+}
+.np-aurora[data-playing="true"] i {
+  animation-play-state: running;
+  filter: saturate(1.25) brightness(1.05);
+}

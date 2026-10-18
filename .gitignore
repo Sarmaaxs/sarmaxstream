@@ -1,0 +1,16 @@
+.env
+.env.local
+.env.*.local
+node_modules
+dist
+.vercel
+.DS_Store
+*.log
+
+# Android wrapper (built in GitHub Actions) + signing keys: never commit
+mobile/node_modules
+mobile/android
+mobile/assets
+mobile/sarmaxstream.apk
+*.keystore
+*.jks
