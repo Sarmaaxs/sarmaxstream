@@ -1,13 +1,12 @@
 // api/downloadMusic.js
 // GET/POST  videoId | url
-// ?stream=1  → pipes audio (no full buffer → avoids Vercel ~4.5MB limit)
+// ?stream=1  → pipes audio; rejects empty upstream bodies as 502
 //
 // Env:
 //   REALMUSIC_API_URL  (default https://cobalt-tools-production-0cd6.up.railway.app)
 //   REALMUSIC_API_KEY  (optional)
 
 import { rateLimit, parseBody } from './_guard.js';
-import { Readable } from 'stream';
 
 const DEFAULT_API = 'https://cobalt-tools-production-0cd6.up.railway.app';
 const YT_ID = /^[A-Za-z0-9_-]{11}$/;
@@ -47,6 +46,46 @@ async function callCobalt(youtubeUrl, key, extra = {}) {
   });
   const data = await r.json().catch(() => null);
   return { ok: r.ok, status: r.status, data };
+}
+
+/** Write a web ReadableStream to the Node response, after verifying the first chunk is non-empty. */
+async function pipeBody(fr, res, { contentType, filename }) {
+  if (!fr.body || typeof fr.body.getReader !== 'function') {
+    res.setHeader('Cache-Control', 'no-store');
+    return res.status(502).json({ status: 'error', error: 'no upstream body' });
+  }
+
+  const reader = fr.body.getReader();
+  const first = await reader.read();
+  if (first.done || !first.value || first.value.length === 0) {
+    res.setHeader('Cache-Control', 'no-store');
+    return res.status(502).json({
+      status: 'error',
+      error: 'cobalt returned an empty file (YouTube may be blocking this instance)',
+    });
+  }
+
+  const ct = contentType || fr.headers.get('content-type') || 'audio/mpeg';
+  const cl = fr.headers.get('content-length');
+  res.setHeader('Cache-Control', 'private, no-store');
+  res.setHeader('Content-Type', ct);
+  res.setHeader(
+    'Content-Disposition',
+    `attachment; filename="${String(filename || 'track.mp3').replace(/"/g, '')}"`
+  );
+  if (cl) res.setHeader('Content-Length', cl);
+
+  res.write(Buffer.from(first.value));
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    if (value && value.length) {
+      const ok = res.write(Buffer.from(value));
+      if (!ok) await new Promise((r) => res.once('drain', r));
+    }
+  }
+  res.end();
+  return undefined;
 }
 
 export default async function handler(req, res) {
@@ -104,31 +143,16 @@ export default async function handler(req, res) {
       return res.status(200).json({ ...data, url: fileUrl, filename });
     }
 
-    // Pipe upstream — avoid buffering entire file into memory
     const fr = await fetch(fileUrl, { signal: AbortSignal.timeout(55000) });
-    if (!fr.ok || !fr.body) {
+    if (!fr.ok) {
       res.setHeader('Cache-Control', 'no-store');
       return res.status(502).json({ status: 'error', error: `file ${fr.status}` });
     }
 
-    const ct = fr.headers.get('content-type') || 'audio/mpeg';
-    const cl = fr.headers.get('content-length');
-    res.setHeader('Cache-Control', 'private, no-store');
-    res.setHeader('Content-Type', ct);
-    res.setHeader(
-      'Content-Disposition',
-      `attachment; filename="${String(filename).replace(/"/g, '')}"`
-    );
-    if (cl) res.setHeader('Content-Length', cl);
-
-    const nodeStream = Readable.fromWeb(fr.body);
-    nodeStream.on('error', () => {
-      try {
-        res.end();
-      } catch {}
+    return await pipeBody(fr, res, {
+      contentType: fr.headers.get('content-type') || 'audio/mpeg',
+      filename,
     });
-    nodeStream.pipe(res);
-    return undefined;
   } catch (e) {
     res.setHeader('Cache-Control', 'no-store');
     if (!res.headersSent) {

@@ -45,21 +45,39 @@ export default async function handler(req, res) {
       return res.status(200).json({ id, error: e.message });
     }
   }
-  // ?proxy=1 → pipe bytes (browser fetch won't hit CORS on Audius/Jamendo)
+  // ?proxy=1 → stream bytes (avoids CORS on 302; no full-buffer 4.5MB trap)
   const wantProxy = req.query && String(req.query.proxy) === '1';
   if (wantProxy) {
     try {
       const fr = await fetch(target, { redirect: 'follow', signal: AbortSignal.timeout(25000) });
       if (!fr.ok) return res.status(502).json({ error: `upstream ${fr.status}` });
+      if (!fr.body || typeof fr.body.getReader !== 'function') {
+        return res.status(502).json({ error: 'no upstream body' });
+      }
+      const reader = fr.body.getReader();
+      const first = await reader.read();
+      if (first.done || !first.value || first.value.length === 0) {
+        return res.status(502).json({ error: 'upstream returned an empty file' });
+      }
       const ct = fr.headers.get('content-type') || 'audio/mpeg';
-      const buf = Buffer.from(await fr.arrayBuffer());
       res.setHeader('Cache-Control', 'private, no-store');
       res.setHeader('Content-Type', ct);
       res.setHeader('Content-Disposition', 'attachment; filename="track.mp3"');
-      res.setHeader('Content-Length', String(buf.length));
-      return res.status(200).send(buf);
+      res.write(Buffer.from(first.value));
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value && value.length) {
+          const ok = res.write(Buffer.from(value));
+          if (!ok) await new Promise((r) => res.once('drain', r));
+        }
+      }
+      res.end();
+      return undefined;
     } catch (e) {
-      return res.status(504).json({ error: e.message || 'proxy failed' });
+      if (!res.headersSent) return res.status(504).json({ error: e.message || 'proxy failed' });
+      try { res.end(); } catch {}
+      return undefined;
     }
   }
 

@@ -289,7 +289,11 @@ export default function NowPlaying() {
         throw new Error(msg);
       }
       const blob = await res.blob();
-      if (!blob || blob.size < 1024) throw new Error('empty file');
+      if (!blob || blob.size < 1024) {
+        let hint = '';
+        try { hint = await blob.text(); } catch {}
+        throw new Error(`empty file: ${blob?.size || 0}B ${blob?.type || ''} ${res.url} :: ${String(hint).slice(0, 200)}`);
+      }
       forceSaveBlob(blob, filename);
       try {
         if (typeof saveOffline === 'function') await saveOffline(t, blob);
