@@ -45,7 +45,25 @@ export default async function handler(req, res) {
       return res.status(200).json({ id, error: e.message });
     }
   }
-  res.setHeader('Cache-Control', 'private, max-age=300');
+  // ?proxy=1 → pipe bytes (browser fetch won't hit CORS on Audius/Jamendo)
+  const wantProxy = req.query && String(req.query.proxy) === '1';
+  if (wantProxy) {
+    try {
+      const fr = await fetch(target, { redirect: 'follow', signal: AbortSignal.timeout(25000) });
+      if (!fr.ok) return res.status(502).json({ error: `upstream ${fr.status}` });
+      const ct = fr.headers.get('content-type') || 'audio/mpeg';
+      const buf = Buffer.from(await fr.arrayBuffer());
+      res.setHeader('Cache-Control', 'private, no-store');
+      res.setHeader('Content-Type', ct);
+      res.setHeader('Content-Disposition', 'attachment; filename="track.mp3"');
+      res.setHeader('Content-Length', String(buf.length));
+      return res.status(200).send(buf);
+    } catch (e) {
+      return res.status(504).json({ error: e.message || 'proxy failed' });
+    }
+  }
+
+  res.setHeader('Cache-Control', 'public, s-maxage=600, stale-while-revalidate=3600');
   res.statusCode = 302;
   res.setHeader('Location', target);
   return res.end();

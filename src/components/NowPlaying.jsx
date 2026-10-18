@@ -43,12 +43,21 @@ function safeFilename(title, artist) {
   return base.slice(0, 120) + '.m4a';
 }
 
-/** Resolve a track to an Audius/Jamendo id we can download via /api/stream. */
+
+
+/** Download via Cobalt-style proxy (YouTube / any supported service). Returns {url, filename}. */
+
+
+
+/** Resolve a track to a downloadable source.
+ *  Returns { kind: 'free'|'yt', id } or null.
+ *  IMPORTANT: YouTube ids from /api/resolve must NOT be discarded.
+ */
 async function resolveDownloadableId(track) {
   const id = track.videoId || track.catalogId || '';
-  if (isAudioId(id)) return id;
+  if (isAudioId(id)) return { kind: 'free', id };
+  if (/^[A-Za-z0-9_-]{11}$/.test(id)) return { kind: 'yt', id };
 
-  // Catalog (dz_/it_) or anything else → ask /api/resolve (GET artist+title)
   const qs = new URLSearchParams({
     artist: track.artist || '',
     title: track.title || '',
@@ -57,24 +66,17 @@ async function resolveDownloadableId(track) {
   if (dur > 0) qs.set('dur', String(Math.round(dur)));
 
   const res = await fetch(`/api/resolve?${qs}`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
-  if (res && isAudioId(res.videoId)) return res.videoId;
+  if (!res || !res.videoId) return null;
+  if (isAudioId(res.videoId)) return { kind: 'free', id: res.videoId };
+  if (/^[A-Za-z0-9_-]{11}$/.test(res.videoId)) return { kind: 'yt', id: res.videoId };
   return null;
 }
 
-/** Fetch audio bytes via our server (proxies Cobalt so CORS never blocks). */
-/** Fetch audio bytes via our server (proxies Cobalt — no CORS). */
-/** Ask our API for a Cobalt tunnel URL, then fetch the file in the browser (CORS is open). */
-/** Download audio via our proven same-origin proxy (works in browser + Capacitor). */
-/** Same URL that works when opened directly in the browser. */
-
-
-
-/** Force a real file save from a Blob (works when <a href=api> shows 200 but saves nothing). */
 function forceSaveBlob(blob, filename) {
   const name = filename || 'track.mp3';
   try {
-    if (typeof window !== 'undefined' && window.navigator && window.navigator.msSaveOrOpenBlob) {
-      window.navigator.msSaveOrOpenBlob(blob, name);
+    if (typeof navigator !== 'undefined' && navigator.msSaveOrOpenBlob) {
+      navigator.msSaveOrOpenBlob(blob, name);
       return;
     }
   } catch {}
@@ -83,24 +85,12 @@ function forceSaveBlob(blob, filename) {
   a.style.display = 'none';
   a.href = url;
   a.download = name;
-  a.setAttribute('download', name);
   document.body.appendChild(a);
   a.click();
   setTimeout(() => {
     try { URL.revokeObjectURL(url); } catch {}
     try { a.remove(); } catch {}
   }, 2500);
-}
-
-function cobaltProxyUrl(track) {
-  const id = String(track.videoId || '').trim();
-  const qs = new URLSearchParams();
-  if (/^[A-Za-z0-9_-]{11}$/.test(id)) qs.set('videoId', id);
-  else if (track.url) qs.set('url', track.url);
-  else if (id) qs.set('videoId', id);
-  else return null;
-  qs.set('stream', '1');
-  return `/api/downloadMusic?${qs.toString()}`;
 }
 
 export default function NowPlaying() {
@@ -253,37 +243,32 @@ export default function NowPlaying() {
   //   GET /api/resolve?artist=&title=  → { videoId: 'aud_…' | 'jam_…' | ytId, source }
   //   GET /api/stream?id=aud_…|jam_…  → 302 to the real audio file
 
-
-
-
-
   const handleDownload = async () => {
     if (!t || dlState === 'loading') return;
     setDlState('loading');
     try {
-      let url = null;
-      // free sources first
-      try {
-        const audioId = await resolveDownloadableId(t);
-        if (audioId) url = `/api/stream?id=${encodeURIComponent(audioId)}`;
-      } catch {}
-      if (!url) url = cobaltProxyUrl(t);
-      if (!url) throw new Error('no download url');
+      const resolved = await resolveDownloadableId(t).catch(() => null);
+      if (!resolved) throw new Error('no playable source');
 
-      // Absolute URL (needed for opening outside the WebView)
+      let url;
+      if (resolved.kind === 'free') {
+        // proxy=1 avoids CORS on 302 to Audius/Jamendo
+        url = `/api/stream?id=${encodeURIComponent(resolved.id)}&proxy=1`;
+      } else {
+        // Real YouTube id — never pass dz_/it_ here
+        url = `/api/downloadMusic?videoId=${encodeURIComponent(resolved.id)}&stream=1`;
+      }
+
       const abs = new URL(url, window.location.origin).href;
       const filename = safeFilename(t.title, t.artist).replace(/\.m4a$/i, '.mp3');
 
-      // APP: open in system browser — WebView often gets 200 and never saves
-      const inApp = typeof isNative !== 'undefined' && isNative;
-      if (inApp) {
+      // App WebView often cannot save files → open system browser
+      if (typeof isNative !== 'undefined' && isNative) {
         try {
-          // Capacitor Browser plugin if present
-          if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Browser) {
+          if (window.Capacitor?.Plugins?.Browser) {
             await window.Capacitor.Plugins.Browser.open({ url: abs });
           } else {
             window.open(abs, '_system');
-            // last resort
             window.location.href = abs;
           }
         } catch {
@@ -293,20 +278,24 @@ export default function NowPlaying() {
         return;
       }
 
-      // WEB: fetch bytes then forceSaveBlob (fixes "200 but no file")
+      // Web: fetch then force file save
       const res = await fetch(url);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      if (!res.ok) {
+        let msg = `HTTP ${res.status}`;
+        try {
+          const j = await res.json();
+          if (j?.error) msg = String(j.error);
+        } catch {}
+        throw new Error(msg);
+      }
       const blob = await res.blob();
       if (!blob || blob.size < 1024) throw new Error('empty file');
       forceSaveBlob(blob, filename);
-
-      // offline copy (best-effort)
       try {
         if (typeof saveOffline === 'function') await saveOffline(t, blob);
       } catch (e) {
         console.warn('saveOffline', e);
       }
-
       setDlState('idle');
     } catch (e) {
       console.warn('Download failed', e);
@@ -314,10 +303,6 @@ export default function NowPlaying() {
       setTimeout(() => setDlState('idle'), 3000);
     }
   };
-
-
-
-
 
 
   if (!p.nowPlayingOpen || !t) return null;
@@ -328,9 +313,7 @@ export default function NowPlaying() {
   const dlTitle =
     dlState === 'error'
       ? 'Download failed — try again'
-      : dlState === 'unsupported'
-        ? 'Download unavailable for this track'
-        : (isNative ? 'Save offline in app' : 'Download to device');
+      : 'Download';
 
   return (
     <div
