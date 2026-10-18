@@ -9,9 +9,10 @@ import Equalizer from '@/components/Equalizer';
 import { useSettings } from '@/lib/useSettings';
 import { isNative } from '@/lib/native';
 import { saveOffline, downloadFileToDevice, hasOffline } from '@/lib/offlineDownloads';
+import { downloadYoutubeOnDevice, deviceDownloadAvailable } from '@/lib/ytDevice';
 import {
   ChevronDown, Play, Pause, SkipBack, SkipForward, Repeat, Shuffle,
-  Heart, Loader2, Download,
+  Heart, Loader2, Download, Check,
 } from 'lucide-react';
 
 const SIZE_KEY = 'sarmax_lyric_size';
@@ -151,7 +152,8 @@ export default function NowPlaying() {
   const [more, setMore] = useState([]);
   const [moreLoading, setMoreLoading] = useState(false);
   const [closing, setClosing] = useState(false);
-  const [dlState, setDlState] = useState('idle'); // idle | loading | error | unsupported
+  const [dlState, setDlState] = useState('idle'); // idle | loading | done | error
+  const [dlMsg, setDlMsg] = useState('');
 
   const color = useAlbumColor(t?.thumbnail, `${t?.title || ''}${t?.artist || ''}`);
 
@@ -285,66 +287,63 @@ export default function NowPlaying() {
   const handleDownload = async () => {
     if (!t || dlState === 'loading') return;
     setDlState('loading');
+    setDlMsg('');
+    const errors = [];
     try {
       const first = await resolveDownloadableId(t).catch(() => null);
-      if (!first) throw new Error('no playable source found');
+      let free = first && first.kind === 'free' ? first : null;
+      let ytId = first && first.kind === 'yt' ? first.id : null;
 
-      // App WebView often cannot save files -> open the proxy URL in the system browser
-      if (typeof isNative !== 'undefined' && isNative) {
-        const abs = new URL(urlFor(first), window.location.origin).href;
-        try {
-          if (window.Capacitor?.Plugins?.Browser) {
-            await window.Capacitor.Plugins.Browser.open({ url: abs });
-          } else {
-            window.open(abs, '_system');
-          }
-        } catch {
-          window.location.href = abs;
-        }
-        setDlState('idle');
-        return;
+      // Track is itself a YouTube id: still look for a free (Audius/Jamendo) copy first
+      if (!free && /^[A-Za-z0-9_-]{11}$/.test(t.videoId || '')) {
+        const r = await resolveDownloadableId(t, { forceResolve: true }).catch(() => null);
+        if (r && r.kind === 'free') free = r;
       }
 
-      // Web: try sources in order until one returns a real audio file
-      const tried = [];
-      const attempts = [first];
       let blob = null;
-      const errors = [];
 
-      for (let i = 0; i < attempts.length && !blob; i += 1) {
-        const src = attempts[i];
-        const key = `${src.kind}:${src.id}`;
-        if (tried.includes(key)) continue;
-        tried.push(key);
-        try {
-          blob = await fetchAudioBlob(src);
-        } catch (e) {
-          errors.push(e.message || String(e));
-          if (i === 0) {
-            // queue fallbacks: the other kind of source
-            const alt = await resolveDownloadableId(
-              t,
-              src.kind === 'free' ? { skipFree: true, forceResolve: true } : { forceResolve: true }
-            ).catch(() => null);
-            if (alt) attempts.push(alt);
-          }
-        }
+      // 1) free source via our same-origin proxy
+      if (free) {
+        try { blob = await fetchAudioBlob(free); } catch (e) { errors.push(e.message || String(e)); }
       }
 
-      if (!blob) throw new Error(errors.join(' | ') || 'download failed');
-
-      const base = safeFilename(t.title, t.artist).replace(/\.m4a$/i, '');
-      forceSaveBlob(blob, base + extFor(blob));
-      try {
-        if (typeof saveOffline === 'function') await saveOffline(t, blob);
-      } catch (e) {
-        console.warn('saveOffline', e);
+      // need a YouTube id for the remaining steps
+      if (!blob && !ytId) {
+        const alt = await resolveDownloadableId(t, { skipFree: true, forceResolve: true }).catch(() => null);
+        if (alt && alt.kind === 'yt') ytId = alt.id;
       }
-      setDlState('idle');
+
+      // 2) Android app: download on the phone itself (its own IP is not blocked)
+      if (!blob && ytId && isNative && deviceDownloadAvailable()) {
+        try { blob = await downloadYoutubeOnDevice(ytId); } catch (e) { errors.push(`phone: ${e.message || e}`); }
+      }
+
+      // 3) our server (Cobalt)
+      if (!blob && ytId) {
+        try { blob = await fetchAudioBlob({ kind: 'yt', id: ytId }); } catch (e) { errors.push(e.message || String(e)); }
+      }
+
+      if (!blob) {
+        throw new Error(errors.length ? errors[errors.length - 1] : 'No downloadable source found for this song');
+      }
+
+      if (isNative) {
+        // The app WebView cannot save files, so keep it inside the app (Downloads page)
+        await saveOffline(t, blob);
+        setDlMsg('Saved in app — open Downloads to play offline');
+      } else {
+        const base = safeFilename(t.title, t.artist).replace(/\.m4a$/i, '');
+        forceSaveBlob(blob, base + extFor(blob));
+        try { await saveOffline(t, blob); } catch (e) { console.warn('saveOffline', e); }
+        setDlMsg('Downloaded');
+      }
+      setDlState('done');
+      setTimeout(() => { setDlState('idle'); setDlMsg(''); }, 3500);
     } catch (e) {
-      console.warn('Download failed', e);
+      console.warn('Download failed', e, errors);
+      setDlMsg(`Couldn't download: ${String((e && e.message) || e).slice(0, 110)}`);
       setDlState('error');
-      setTimeout(() => setDlState('idle'), 3000);
+      setTimeout(() => { setDlState('idle'); setDlMsg(''); }, 6000);
     }
   };
 
@@ -355,9 +354,7 @@ export default function NowPlaying() {
   const hasSynced = lyricLines.length > 0;
 
   const dlTitle =
-    dlState === 'error'
-      ? 'Download failed — try again'
-      : 'Download';
+    dlState === 'error' ? dlMsg || 'Download failed — try again' : isNative ? 'Save offline in app' : 'Download';
 
   return (
     <div
@@ -415,7 +412,7 @@ export default function NowPlaying() {
               aria-label="Download"
               disabled={dlState === 'loading'}
               className={`p-3 -m-1 rounded-full glass ${
-                dlState === 'error' || dlState === 'unsupported'
+                dlState === 'error'
                   ? 'text-red-400'
                   : 'text-white/70 hover:text-white'
               }`}
@@ -423,6 +420,8 @@ export default function NowPlaying() {
             >
               {dlState === 'loading' ? (
                 <Loader2 size={20} className="animate-spin" />
+              ) : dlState === 'done' ? (
+                <Check size={20} className="text-green-400" />
               ) : (
                 <Download size={20} />
               )}
@@ -436,6 +435,12 @@ export default function NowPlaying() {
             </button>
           </div>
         </div>
+
+        {dlMsg && (dlState === 'error' || dlState === 'done') && (
+          <div className="fixed left-1/2 -translate-x-1/2 top-20 z-[70] max-w-[90%] px-4 py-2 rounded-full bg-black/80 text-white text-xs text-center shadow-lg">
+            {dlMsg}
+          </div>
+        )}
 
         <div className="flex-1 min-h-0 flex flex-col md:flex-row gap-3 md:gap-5">
           <div className="md:w-1/2 flex md:flex-col items-center md:justify-center gap-3 shrink-0 md:shrink">

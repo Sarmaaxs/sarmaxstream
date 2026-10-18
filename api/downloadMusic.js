@@ -5,8 +5,9 @@
 // so the client never receives a "200 OK" with a 0-byte file.
 //
 // Env:
-//   REALMUSIC_API_URL  (default https://cobalt-tools-production-0cd6.up.railway.app)
-//   REALMUSIC_API_KEY  (optional)
+//   REALMUSIC_API_URLS  comma-separated list of Cobalt instances, tried in order
+//   REALMUSIC_API_URL   single instance (used if URLS is not set)
+//   REALMUSIC_API_KEY   (optional)
 
 import { rateLimit, parseBody } from './_guard.js';
 
@@ -25,8 +26,13 @@ function buildYoutubeUrl(idOrUrl) {
   return null;
 }
 
+function apiBases() {
+  const raw = process.env.REALMUSIC_API_URLS || process.env.REALMUSIC_API_URL || DEFAULT_API;
+  return raw.split(',').map((x) => x.trim().replace(/\/$/, '')).filter(Boolean);
+}
+
 async function callCobalt(youtubeUrl, key, opt) {
-  const apiBase = (process.env.REALMUSIC_API_URL || DEFAULT_API).replace(/\/$/, '');
+  const apiBase = opt.base;
   const payload = {
     url: youtubeUrl,
     downloadMode: 'audio',
@@ -129,16 +135,18 @@ export default async function handler(req, res) {
 
   const wantStream = (req.query && String(req.query.stream) === '1') || body.stream === true;
 
-  // Attempts: mp3 128k -> original audio (no ffmpeg step, most reliable) -> mp3 default bitrate
-  const attempts = [
+  // Per instance: mp3 128k, then original audio (no ffmpeg step). Stop before Vercel's 30s limit.
+  const formats = [
     { audioFormat: body.audioFormat || 'mp3', audioBitrate: body.audioBitrate || '128' },
     { audioFormat: 'best' },
-    { audioFormat: 'mp3', audioBitrate: '320' },
   ];
+  const attempts = apiBases().flatMap((base) => formats.map((f) => ({ ...f, base }))).slice(0, 8);
+  const t0 = Date.now();
 
   let last = { error: 'unknown' };
   try {
     for (const opt of attempts) {
+      if (Date.now() - t0 > 19000) break;
       const t = await openTunnel(youtubeUrl, key, opt, wantStream);
       if (!t.ok) {
         last = t;
