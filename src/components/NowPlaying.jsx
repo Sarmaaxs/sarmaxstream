@@ -51,12 +51,15 @@ function safeFilename(title, artist) {
 
 /** Resolve a track to a downloadable source.
  *  Returns { kind: 'free'|'yt', id } or null.
+ *  opts.skipFree -> ignore Audius/Jamendo and return a YouTube id (used as fallback).
  *  IMPORTANT: YouTube ids from /api/resolve must NOT be discarded.
  */
-async function resolveDownloadableId(track) {
+async function resolveDownloadableId(track, opts = {}) {
   const id = track.videoId || track.catalogId || '';
-  if (isAudioId(id)) return { kind: 'free', id };
-  if (/^[A-Za-z0-9_-]{11}$/.test(id)) return { kind: 'yt', id };
+  if (!opts.skipFree) {
+    if (isAudioId(id)) return { kind: 'free', id };
+  }
+  if (!opts.forceResolve && /^[A-Za-z0-9_-]{11}$/.test(id)) return { kind: 'yt', id };
 
   const qs = new URLSearchParams({
     artist: track.artist || '',
@@ -64,12 +67,48 @@ async function resolveDownloadableId(track) {
   });
   const dur = Number(track.duration);
   if (dur > 0) qs.set('dur', String(Math.round(dur)));
+  if (opts.skipFree) qs.set('skip', 'free');
 
   const res = await fetch(`/api/resolve?${qs}`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
   if (!res || !res.videoId) return null;
   if (isAudioId(res.videoId)) return { kind: 'free', id: res.videoId };
   if (/^[A-Za-z0-9_-]{11}$/.test(res.videoId)) return { kind: 'yt', id: res.videoId };
   return null;
+}
+
+const urlFor = (src) =>
+  src.kind === 'free'
+    ? `/api/stream?id=${encodeURIComponent(src.id)}&proxy=1`
+    : `/api/downloadMusic?videoId=${encodeURIComponent(src.id)}&stream=1`;
+
+/** Fetch one source and return a real audio Blob, or throw a descriptive error. */
+async function fetchAudioBlob(src) {
+  const res = await fetch(urlFor(src));
+  if (!res.ok) {
+    let msg = `HTTP ${res.status}`;
+    try {
+      const j = await res.json();
+      if (j?.error) msg = String(j.error);
+    } catch {}
+    throw new Error(`${src.kind}: ${msg}`);
+  }
+  const blob = await res.blob();
+  const ct = (blob.type || res.headers.get('content-type') || '').toLowerCase();
+  if (blob.size < 1024 || ct.includes('json') || ct.includes('html') || ct.startsWith('text/')) {
+    let hint = '';
+    try { hint = (await blob.text()).slice(0, 120); } catch {}
+    throw new Error(`${src.kind}: empty/invalid file (${blob.size}B ${ct || 'no type'}) ${hint}`);
+  }
+  return blob;
+}
+
+function extFor(blob) {
+  const t = (blob.type || '').toLowerCase();
+  if (t.includes('mpeg') || t.includes('mp3')) return '.mp3';
+  if (t.includes('mp4') || t.includes('aac') || t.includes('m4a')) return '.m4a';
+  if (t.includes('webm')) return '.webm';
+  if (t.includes('ogg') || t.includes('opus')) return '.ogg';
+  return '.mp3';
 }
 
 function forceSaveBlob(blob, filename) {
@@ -247,29 +286,17 @@ export default function NowPlaying() {
     if (!t || dlState === 'loading') return;
     setDlState('loading');
     try {
-      const resolved = await resolveDownloadableId(t).catch(() => null);
-      if (!resolved) throw new Error('no playable source');
+      const first = await resolveDownloadableId(t).catch(() => null);
+      if (!first) throw new Error('no playable source found');
 
-      let url;
-      if (resolved.kind === 'free') {
-        // proxy=1 avoids CORS on 302 to Audius/Jamendo
-        url = `/api/stream?id=${encodeURIComponent(resolved.id)}&proxy=1`;
-      } else {
-        // Real YouTube id — never pass dz_/it_ here
-        url = `/api/downloadMusic?videoId=${encodeURIComponent(resolved.id)}&stream=1`;
-      }
-
-      const abs = new URL(url, window.location.origin).href;
-      const filename = safeFilename(t.title, t.artist).replace(/\.m4a$/i, '.mp3');
-
-      // App WebView often cannot save files → open system browser
+      // App WebView often cannot save files -> open the proxy URL in the system browser
       if (typeof isNative !== 'undefined' && isNative) {
+        const abs = new URL(urlFor(first), window.location.origin).href;
         try {
           if (window.Capacitor?.Plugins?.Browser) {
             await window.Capacitor.Plugins.Browser.open({ url: abs });
           } else {
             window.open(abs, '_system');
-            window.location.href = abs;
           }
         } catch {
           window.location.href = abs;
@@ -278,23 +305,36 @@ export default function NowPlaying() {
         return;
       }
 
-      // Web: fetch then force file save
-      const res = await fetch(url);
-      if (!res.ok) {
-        let msg = `HTTP ${res.status}`;
+      // Web: try sources in order until one returns a real audio file
+      const tried = [];
+      const attempts = [first];
+      let blob = null;
+      const errors = [];
+
+      for (let i = 0; i < attempts.length && !blob; i += 1) {
+        const src = attempts[i];
+        const key = `${src.kind}:${src.id}`;
+        if (tried.includes(key)) continue;
+        tried.push(key);
         try {
-          const j = await res.json();
-          if (j?.error) msg = String(j.error);
-        } catch {}
-        throw new Error(msg);
+          blob = await fetchAudioBlob(src);
+        } catch (e) {
+          errors.push(e.message || String(e));
+          if (i === 0) {
+            // queue fallbacks: the other kind of source
+            const alt = await resolveDownloadableId(
+              t,
+              src.kind === 'free' ? { skipFree: true, forceResolve: true } : { forceResolve: true }
+            ).catch(() => null);
+            if (alt) attempts.push(alt);
+          }
+        }
       }
-      const blob = await res.blob();
-      if (!blob || blob.size < 1024) {
-        let hint = '';
-        try { hint = await blob.text(); } catch {}
-        throw new Error(`empty file: ${blob?.size || 0}B ${blob?.type || ''} ${res.url} :: ${String(hint).slice(0, 200)}`);
-      }
-      forceSaveBlob(blob, filename);
+
+      if (!blob) throw new Error(errors.join(' | ') || 'download failed');
+
+      const base = safeFilename(t.title, t.artist).replace(/\.m4a$/i, '');
+      forceSaveBlob(blob, base + extFor(blob));
       try {
         if (typeof saveOffline === 'function') await saveOffline(t, blob);
       } catch (e) {
