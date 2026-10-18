@@ -62,6 +62,7 @@ async function resolveDownloadableId(track) {
 }
 
 /** Fetch audio bytes via our server (proxies Cobalt so CORS never blocks). */
+/** Fetch audio bytes via our server (proxies Cobalt — no CORS). */
 async function downloadViaCobalt(track) {
   const id = track.videoId || '';
   const qs = new URLSearchParams();
@@ -237,6 +238,7 @@ export default function NowPlaying() {
   // Uses the real APIs:
   //   GET /api/resolve?artist=&title=  → { videoId: 'aud_…' | 'jam_…' | ytId, source }
   //   GET /api/stream?id=aud_…|jam_…  → 302 to the real audio file
+
   const handleDownload = async () => {
     if (!t || dlState === 'loading') return;
     setDlState('loading');
@@ -244,10 +246,11 @@ export default function NowPlaying() {
       let blob = null;
       let filename = safeFilename(t.title, t.artist).replace(/\.m4a$/i, '.mp3');
 
-      // 1) Prefer free Audius / Jamendo stream
       const audioId = await resolveDownloadableId(t);
       if (audioId) {
-        const res = await fetch(`/api/stream?id=${encodeURIComponent(audioId)}`, { redirect: 'follow' });
+        const res = await fetch(`/api/stream?id=${encodeURIComponent(audioId)}`, {
+          redirect: 'follow',
+        });
         if (!res.ok) throw new Error(`stream ${res.status}`);
         blob = await res.blob();
         if (!blob || blob.size < 1024) throw new Error('empty blob');
@@ -255,32 +258,25 @@ export default function NowPlaying() {
         if (ct.includes('mpeg') || ct.includes('mp3')) filename = filename.replace(/\.(m4a|ogg|wav)$/i, '.mp3');
         else if (ct.includes('ogg')) filename = filename.replace(/\.(m4a|mp3)$/i, '.ogg');
       } else {
-        // 2) Cobalt via our proxy (no CORS)
         const { blob: b, filename: fn } = await downloadViaCobalt(t);
         blob = b;
         if (fn) filename = fn;
       }
 
-      // App: keep inside IndexedDB for offline play. Web: also save file to device.
       await saveOffline(t, blob);
-      if (!isNative) {
+      if (typeof isNative !== 'undefined' && !isNative) {
+        downloadFileToDevice(blob, filename);
+      } else if (typeof isNative === 'undefined') {
         downloadFileToDevice(blob, filename);
       }
       setDlState('idle');
     } catch (e) {
       console.warn('Download failed', e);
-      try {
-        const audioId = await resolveDownloadableId(t);
-        if (audioId) {
-          window.open(`/api/stream?id=${encodeURIComponent(audioId)}`, '_blank', 'noopener');
-          setDlState('idle');
-          return;
-        }
-      } catch {}
       setDlState('error');
       setTimeout(() => setDlState('idle'), 2500);
     }
   };
+
 
   if (!p.nowPlayingOpen || !t) return null;
 

@@ -1,6 +1,6 @@
 // api/downloadMusic.js
-// POST { url | videoId } -> cobalt JSON (tunnel/redirect)
-// GET  ?url=...&stream=1  -> proxies the audio bytes (no CORS)
+// GET/POST with videoId or url
+// ?stream=1  -> proxies audio bytes (avoids Cobalt CORS)
 import { rateLimit, parseBody } from './_guard.js';
 
 const DEFAULT_API = 'https://api.cobalt.tools';
@@ -48,7 +48,11 @@ export default async function handler(req, res) {
 
   const key = process.env.REALMUSIC_API_KEY || '';
   const body = parseBody(req);
-  const rawUrl = body.url || body.videoId || (req.query && (req.query.url || req.query.videoId)) || '';
+  const rawUrl =
+    body.url ||
+    body.videoId ||
+    (req.query && (req.query.url || req.query.videoId)) ||
+    '';
   const youtubeUrl = buildYoutubeUrl(rawUrl);
 
   if (!youtubeUrl) {
@@ -56,8 +60,8 @@ export default async function handler(req, res) {
     return res.status(400).json({ error: 'Provide a YouTube url or videoId', status: 'error' });
   }
 
-  // Stream mode: resolve + proxy bytes so the browser never hits Cobalt CORS
-  const wantStream = (req.query && req.query.stream === '1') || body.stream === true;
+  const wantStream =
+    (req.query && String(req.query.stream) === '1') || body.stream === true;
 
   try {
     const { ok, status, data } = await callCobalt(youtubeUrl, key, body);
@@ -65,7 +69,9 @@ export default async function handler(req, res) {
       res.setHeader('Cache-Control', 'no-store');
       return res.status(status >= 400 ? status : 502).json({
         status: 'error',
-        error: (data && data.error && (data.error.code || data.error)) || `Upstream ${status}`,
+        error:
+          (data && data.error && (data.error.code || data.error)) ||
+          `Upstream ${status}`,
       });
     }
 
@@ -88,7 +94,7 @@ export default async function handler(req, res) {
       return res.status(200).json({ ...data, url: fileUrl, filename });
     }
 
-    // Proxy the audio
+    // Proxy bytes so the browser never hits Cobalt CORS
     const fr = await fetch(fileUrl, { signal: AbortSignal.timeout(60000) });
     if (!fr.ok) {
       res.setHeader('Cache-Control', 'no-store');
@@ -98,14 +104,18 @@ export default async function handler(req, res) {
     const ct = fr.headers.get('content-type') || 'audio/mpeg';
     res.setHeader('Cache-Control', 'private, no-store');
     res.setHeader('Content-Type', ct);
-    res.setHeader('Content-Disposition', `attachment; filename="${filename.replace(/"/g, '')}"`);
+    res.setHeader(
+      'Content-Disposition',
+      `attachment; filename="${String(filename).replace(/"/g, '')}"`
+    );
     res.setHeader('Content-Length', String(buf.length));
     return res.status(200).send(buf);
   } catch (e) {
     res.setHeader('Cache-Control', 'no-store');
     return res.status(504).json({
       status: 'error',
-      error: e.name === 'TimeoutError' || e.name === 'AbortError' ? 'timeout' : 'network',
+      error:
+        e.name === 'TimeoutError' || e.name === 'AbortError' ? 'timeout' : 'network',
     });
   }
 }
