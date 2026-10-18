@@ -66,7 +66,33 @@ async function resolveDownloadableId(track) {
 /** Ask our API for a Cobalt tunnel URL, then fetch the file in the browser (CORS is open). */
 /** Download audio via our proven same-origin proxy (works in browser + Capacitor). */
 /** Same URL that works when opened directly in the browser. */
-function cobaltDownloadUrl(track) {
+
+
+
+/** Force a real file save from a Blob (works when <a href=api> shows 200 but saves nothing). */
+function forceSaveBlob(blob, filename) {
+  const name = filename || 'track.mp3';
+  try {
+    if (typeof window !== 'undefined' && window.navigator && window.navigator.msSaveOrOpenBlob) {
+      window.navigator.msSaveOrOpenBlob(blob, name);
+      return;
+    }
+  } catch {}
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.style.display = 'none';
+  a.href = url;
+  a.download = name;
+  a.setAttribute('download', name);
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => {
+    try { URL.revokeObjectURL(url); } catch {}
+    try { a.remove(); } catch {}
+  }, 2500);
+}
+
+function cobaltProxyUrl(track) {
   const id = String(track.videoId || '').trim();
   const qs = new URLSearchParams();
   if (/^[A-Za-z0-9_-]{11}$/.test(id)) qs.set('videoId', id);
@@ -230,41 +256,56 @@ export default function NowPlaying() {
 
 
 
+
   const handleDownload = async () => {
     if (!t || dlState === 'loading') return;
     setDlState('loading');
     try {
-      // 1) free Audius/Jamendo stream URL
       let url = null;
+      // free sources first
       try {
         const audioId = await resolveDownloadableId(t);
         if (audioId) url = `/api/stream?id=${encodeURIComponent(audioId)}`;
       } catch {}
-
-      // 2) Cobalt proxy — EXACT same URL as the link that works in the browser
-      if (!url) {
-        url = cobaltDownloadUrl(t);
-      }
+      if (!url) url = cobaltProxyUrl(t);
       if (!url) throw new Error('no download url');
 
-      // Do NOT fetch the whole file in JS — just open the URL (like pasting it in the address bar)
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = safeFilename(t.title, t.artist).replace(/\.m4a$/i, '.mp3');
-      a.rel = 'noopener';
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
+      // Absolute URL (needed for opening outside the WebView)
+      const abs = new URL(url, window.location.origin).href;
+      const filename = safeFilename(t.title, t.artist).replace(/\.m4a$/i, '.mp3');
 
-      // Mobile WebView / in-app: force navigation if <a download> is ignored
-      setTimeout(() => {
+      // APP: open in system browser — WebView often gets 200 and never saves
+      const inApp = typeof isNative !== 'undefined' && isNative;
+      if (inApp) {
         try {
-          // only fallback if still on same page
-          if (document.visibilityState === 'visible') {
-            window.location.href = url;
+          // Capacitor Browser plugin if present
+          if (window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Browser) {
+            await window.Capacitor.Plugins.Browser.open({ url: abs });
+          } else {
+            window.open(abs, '_system');
+            // last resort
+            window.location.href = abs;
           }
-        } catch {}
-      }, 400);
+        } catch {
+          window.location.href = abs;
+        }
+        setDlState('idle');
+        return;
+      }
+
+      // WEB: fetch bytes then forceSaveBlob (fixes "200 but no file")
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const blob = await res.blob();
+      if (!blob || blob.size < 1024) throw new Error('empty file');
+      forceSaveBlob(blob, filename);
+
+      // offline copy (best-effort)
+      try {
+        if (typeof saveOffline === 'function') await saveOffline(t, blob);
+      } catch (e) {
+        console.warn('saveOffline', e);
+      }
 
       setDlState('idle');
     } catch (e) {
@@ -273,6 +314,7 @@ export default function NowPlaying() {
       setTimeout(() => setDlState('idle'), 3000);
     }
   };
+
 
 
 
