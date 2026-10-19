@@ -300,6 +300,27 @@ export default function NowPlaying() {
         if (r && r.kind === 'free') free = r;
       }
 
+      // App + download address configured: hand the real download link to the phone's browser.
+      // (The app WebView cannot save files, and Capacitor keeps links to the app's own address
+      //  inside the WebView. A DIFFERENT address is opened by Android's browser, which downloads it.)
+      const dlOrigin = String((import.meta.env && import.meta.env.VITE_DOWNLOAD_ORIGIN) || '').replace(/\/$/, '');
+      if (isNative && dlOrigin) {
+        if (!free && !ytId) {
+          const alt = await resolveDownloadableId(t, { skipFree: true, forceResolve: true }).catch(() => null);
+          if (alt && alt.kind === 'yt') ytId = alt.id;
+        }
+        const src = free || (ytId ? { kind: 'yt', id: ytId } : null);
+        if (!src) throw new Error('no downloadable source found for this song');
+        const abs = `${dlOrigin}${urlFor(src)}`;
+        const B = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Browser;
+        if (B && typeof B.open === 'function') B.open({ url: abs });
+        else window.location.href = abs;
+        setDlMsg('Download started in your browser — check your notifications');
+        setDlState('done');
+        setTimeout(() => { setDlState('idle'); setDlMsg(''); }, 5000);
+        return;
+      }
+
       let blob = null;
 
       // 1) free source via our same-origin proxy
