@@ -8,6 +8,8 @@ import {
   formatBytes,
 } from '@/lib/offlineDownloads';
 import { Download, Trash2, Play, HardDrive, ArrowLeft } from 'lucide-react';
+import { ActiveDownloads } from '@/components/DownloadProgress';
+import { useDownloads } from '@/lib/downloadManager';
 
 export default function Downloads() {
   const player = usePlayer();
@@ -15,16 +17,19 @@ export default function Downloads() {
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(null);
 
-  const reload = useCallback(async () => {
-    setLoading(true);
+  const jobs = useDownloads();
+  const doneCount = jobs.filter((j) => j.status === 'done').length;
+
+  const reload = useCallback(async (quiet) => {
+    if (!quiet) setLoading(true);
     const rows = await listOffline();
     setItems(rows);
     setLoading(false);
   }, []);
 
   useEffect(() => {
-    reload();
-  }, [reload]);
+    reload(true);
+  }, [reload, doneCount]);
 
   const play = async (item) => {
     setBusy(item.videoId);
@@ -78,6 +83,8 @@ export default function Downloads() {
           </p>
         </div>
       </div>
+
+      <ActiveDownloads />
 
       {loading ? (
         <div className="text-white/40 text-sm py-16 text-center">Loading…</div>

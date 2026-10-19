@@ -5,6 +5,7 @@ import PlayerBar from '@/components/PlayerBar';
 import { usePlayer } from '@/lib/PlayerContext';
 import DogMascot from '@/components/DogMascot';
 import AnimatedBackground from '@/components/AnimatedBackground';
+import DownloadProgress from '@/components/DownloadProgress';
 
 export default function MusicLayout() {
   const player = usePlayer();
@@ -31,6 +32,7 @@ export default function MusicLayout() {
         <Outlet />
       </div>
       <PlayerBar />
+      <DownloadProgress />
       <DogMascot />
     </div>
   );

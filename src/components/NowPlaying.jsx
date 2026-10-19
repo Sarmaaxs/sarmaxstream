@@ -8,8 +8,7 @@ import LyricsView from '@/components/LyricsView';
 import Equalizer from '@/components/Equalizer';
 import { useSettings } from '@/lib/useSettings';
 import { isNative } from '@/lib/native';
-import { saveOffline, downloadFileToDevice, hasOffline } from '@/lib/offlineDownloads';
-import { downloadYoutubeOnDevice, deviceDownloadAvailable } from '@/lib/ytDevice';
+import { startDownload, useDownloadJob } from '@/lib/downloadManager';
 import {
   ChevronDown, Play, Pause, SkipBack, SkipForward, Repeat, Shuffle,
   Heart, Loader2, Download, Check,
@@ -19,7 +18,6 @@ const SIZE_KEY = 'sarmax_lyric_size';
 const LYRICS_CACHE_PREFIX = 'sarmax_lyrics_v2:';
 const OFFSET_PREFIX = 'sarmax_lyric_offset:';
 
-const isAudioId = (id) => typeof id === 'string' && (id.startsWith('aud_') || id.startsWith('jam_'));
 const isCatalogId = (id) => typeof id === 'string' && /^(dz|it)_\d+$/.test(id);
 
 function readJSON(key) {
@@ -39,100 +37,6 @@ function fmt(sec) {
   if (!sec || isNaN(sec)) return '0:00';
   return `${Math.floor(sec / 60)}:${Math.floor(sec % 60).toString().padStart(2, '0')}`;
 }
-function safeFilename(title, artist) {
-  const base = [artist, title].filter(Boolean).join(' - ').replace(/[<>:"/\\|?*\x00-\x1f]/g, '').trim() || 'track';
-  return base.slice(0, 120) + '.m4a';
-}
-
-
-
-/** Download via Cobalt-style proxy (YouTube / any supported service). Returns {url, filename}. */
-
-
-
-/** Resolve a track to a downloadable source.
- *  Returns { kind: 'free'|'yt', id } or null.
- *  opts.skipFree -> ignore Audius/Jamendo and return a YouTube id (used as fallback).
- *  IMPORTANT: YouTube ids from /api/resolve must NOT be discarded.
- */
-async function resolveDownloadableId(track, opts = {}) {
-  const id = track.videoId || track.catalogId || '';
-  if (!opts.skipFree) {
-    if (isAudioId(id)) return { kind: 'free', id };
-  }
-  if (!opts.forceResolve && /^[A-Za-z0-9_-]{11}$/.test(id)) return { kind: 'yt', id };
-
-  const qs = new URLSearchParams({
-    artist: track.artist || '',
-    title: track.title || '',
-  });
-  const dur = Number(track.duration);
-  if (dur > 0) qs.set('dur', String(Math.round(dur)));
-  if (opts.skipFree) qs.set('skip', 'free');
-
-  const res = await fetch(`/api/resolve?${qs}`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
-  if (!res || !res.videoId) return null;
-  if (isAudioId(res.videoId)) return { kind: 'free', id: res.videoId };
-  if (/^[A-Za-z0-9_-]{11}$/.test(res.videoId)) return { kind: 'yt', id: res.videoId };
-  return null;
-}
-
-const urlFor = (src) =>
-  src.kind === 'free'
-    ? `/api/stream?id=${encodeURIComponent(src.id)}&proxy=1`
-    : `/api/downloadMusic?videoId=${encodeURIComponent(src.id)}&stream=1`;
-
-/** Fetch one source and return a real audio Blob, or throw a descriptive error. */
-async function fetchAudioBlob(src) {
-  const res = await fetch(urlFor(src));
-  if (!res.ok) {
-    let msg = `HTTP ${res.status}`;
-    try {
-      const j = await res.json();
-      if (j?.error) msg = String(j.error);
-    } catch {}
-    throw new Error(`${src.kind}: ${msg}`);
-  }
-  const blob = await res.blob();
-  const ct = (blob.type || res.headers.get('content-type') || '').toLowerCase();
-  if (blob.size < 1024 || ct.includes('json') || ct.includes('html') || ct.startsWith('text/')) {
-    let hint = '';
-    try { hint = (await blob.text()).slice(0, 120); } catch {}
-    throw new Error(`${src.kind}: empty/invalid file (${blob.size}B ${ct || 'no type'}) ${hint}`);
-  }
-  return blob;
-}
-
-function extFor(blob) {
-  const t = (blob.type || '').toLowerCase();
-  if (t.includes('mpeg') || t.includes('mp3')) return '.mp3';
-  if (t.includes('mp4') || t.includes('aac') || t.includes('m4a')) return '.m4a';
-  if (t.includes('webm')) return '.webm';
-  if (t.includes('ogg') || t.includes('opus')) return '.ogg';
-  return '.mp3';
-}
-
-function forceSaveBlob(blob, filename) {
-  const name = filename || 'track.mp3';
-  try {
-    if (typeof navigator !== 'undefined' && navigator.msSaveOrOpenBlob) {
-      navigator.msSaveOrOpenBlob(blob, name);
-      return;
-    }
-  } catch {}
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.style.display = 'none';
-  a.href = url;
-  a.download = name;
-  document.body.appendChild(a);
-  a.click();
-  setTimeout(() => {
-    try { URL.revokeObjectURL(url); } catch {}
-    try { a.remove(); } catch {}
-  }, 2500);
-}
-
 export default function NowPlaying() {
   const p = usePlayer();
   const lib = useMusicLibrary();
@@ -152,8 +56,8 @@ export default function NowPlaying() {
   const [more, setMore] = useState([]);
   const [moreLoading, setMoreLoading] = useState(false);
   const [closing, setClosing] = useState(false);
-  const [dlState, setDlState] = useState('idle'); // idle | loading | done | error
-  const [dlMsg, setDlMsg] = useState('');
+  const job = useDownloadJob(t && t.videoId);
+  const dlState = !job ? 'idle' : job.status === 'error' ? 'error' : job.status === 'done' ? 'done' : 'loading';
 
   const color = useAlbumColor(t?.thumbnail, `${t?.title || ''}${t?.artist || ''}`);
 
@@ -284,93 +188,10 @@ export default function NowPlaying() {
   //   GET /api/resolve?artist=&title=  → { videoId: 'aud_…' | 'jam_…' | ytId, source }
   //   GET /api/stream?id=aud_…|jam_…  → 302 to the real audio file
 
-  const handleDownload = async () => {
+  const handleDownload = () => {
     if (!t || dlState === 'loading') return;
-    setDlState('loading');
-    setDlMsg('');
-    const errors = [];
-    try {
-      const first = await resolveDownloadableId(t).catch(() => null);
-      let free = first && first.kind === 'free' ? first : null;
-      let ytId = first && first.kind === 'yt' ? first.id : null;
-
-      // Track is itself a YouTube id: still look for a free (Audius/Jamendo) copy first
-      if (!free && /^[A-Za-z0-9_-]{11}$/.test(t.videoId || '')) {
-        const r = await resolveDownloadableId(t, { forceResolve: true }).catch(() => null);
-        if (r && r.kind === 'free') free = r;
-      }
-
-      // App + download address configured: hand the real download link to the phone's browser.
-      // (The app WebView cannot save files, and Capacitor keeps links to the app's own address
-      //  inside the WebView. A DIFFERENT address is opened by Android's browser, which downloads it.)
-      const dlOrigin = String((import.meta.env && import.meta.env.VITE_DOWNLOAD_ORIGIN) || '').replace(/\/$/, '');
-      if (isNative && dlOrigin) {
-        if (!free && !ytId) {
-          const alt = await resolveDownloadableId(t, { skipFree: true, forceResolve: true }).catch(() => null);
-          if (alt && alt.kind === 'yt') ytId = alt.id;
-        }
-        const src = free || (ytId ? { kind: 'yt', id: ytId } : null);
-        if (!src) throw new Error('no downloadable source found for this song');
-        const abs = `${dlOrigin}${urlFor(src)}`;
-        const B = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.Browser;
-        if (B && typeof B.open === 'function') B.open({ url: abs });
-        else window.location.href = abs;
-        setDlMsg('Download started in your browser — check your notifications');
-        setDlState('done');
-        setTimeout(() => { setDlState('idle'); setDlMsg(''); }, 5000);
-        return;
-      }
-
-      let blob = null;
-
-      // 1) free source via our same-origin proxy
-      if (free) {
-        try { blob = await fetchAudioBlob(free); } catch (e) { errors.push(e.message || String(e)); }
-      }
-
-      // need a YouTube id for the remaining steps
-      if (!blob && !ytId) {
-        const alt = await resolveDownloadableId(t, { skipFree: true, forceResolve: true }).catch(() => null);
-        if (alt && alt.kind === 'yt') ytId = alt.id;
-        else errors.push('resolve: no YouTube match found');
-      }
-
-      // 2) Android app: download on the phone itself (its own IP is not blocked)
-      if (!blob && ytId && isNative && deviceDownloadAvailable()) {
-        try { blob = await downloadYoutubeOnDevice(ytId); } catch (e) { errors.push(`phone: ${e.message || e}`); }
-      } else if (!blob && ytId && isNative) {
-        errors.push('phone: native http missing');
-      }
-
-      // 3) our server (Cobalt)
-      if (!blob && ytId) {
-        try { blob = await fetchAudioBlob({ kind: 'yt', id: ytId }); } catch (e) { errors.push(e.message || String(e)); }
-      }
-
-      if (!blob) {
-        throw new Error(`[${isNative ? 'app' : 'web'}] ${errors.length ? errors.join(' | ') : 'no source found for this song'}`);
-      }
-
-      if (isNative) {
-        // The app WebView cannot save files, so keep it inside the app (Downloads page)
-        await saveOffline(t, blob);
-        setDlMsg('Saved in app — open Downloads to play offline');
-      } else {
-        const base = safeFilename(t.title, t.artist).replace(/\.m4a$/i, '');
-        forceSaveBlob(blob, base + extFor(blob));
-        try { await saveOffline(t, blob); } catch (e) { console.warn('saveOffline', e); }
-        setDlMsg('Downloaded');
-      }
-      setDlState('done');
-      setTimeout(() => { setDlState('idle'); setDlMsg(''); }, 3500);
-    } catch (e) {
-      console.warn('Download failed', e, errors);
-      setDlMsg(`Couldn't download: ${String((e && e.message) || e).slice(0, 260)}`);
-      setDlState('error');
-      setTimeout(() => { setDlState('idle'); setDlMsg(''); }, 15000);
-    }
+    startDownload(t);
   };
-
 
   if (!p.nowPlayingOpen || !t) return null;
 
@@ -378,7 +199,7 @@ export default function NowPlaying() {
   const hasSynced = lyricLines.length > 0;
 
   const dlTitle =
-    dlState === 'error' ? dlMsg || 'Download failed — try again' : isNative ? 'Save offline in app' : 'Download';
+    dlState === 'error' ? 'Download failed — tap to retry' : isNative ? 'Save offline in app' : 'Download';
 
   return (
     <div
@@ -459,12 +280,6 @@ export default function NowPlaying() {
             </button>
           </div>
         </div>
-
-        {dlMsg && (dlState === 'error' || dlState === 'done') && (
-          <div className="fixed left-1/2 -translate-x-1/2 top-20 z-[70] max-w-[90%] px-4 py-2 rounded-2xl bg-black/85 text-white text-xs text-center shadow-lg break-words">
-            {dlMsg}
-          </div>
-        )}
 
         <div className="flex-1 min-h-0 flex flex-col md:flex-row gap-3 md:gap-5">
           <div className="md:w-1/2 flex md:flex-col items-center md:justify-center gap-3 shrink-0 md:shrink">

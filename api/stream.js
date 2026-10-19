@@ -58,6 +58,8 @@ export default async function handler(req, res) {
       }
       res.setHeader('Cache-Control', 'private, no-store');
       res.setHeader('Content-Type', fr.headers.get('content-type') || 'audio/mpeg');
+      const clen = fr.headers.get('content-length');
+      if (clen && !fr.headers.get('content-encoding')) res.setHeader('Content-Length', clen);
       res.setHeader('Content-Disposition', 'attachment; filename="track.mp3"');
       res.statusCode = 200;
       res.write(Buffer.from(first.value));
