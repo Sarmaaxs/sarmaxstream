@@ -5,13 +5,13 @@
 // so the client never receives a "200 OK" with a 0-byte file.
 //
 // Env:
-//   REALMUSIC_API_URLS  comma-separated list of Cobalt instances, tried in order
-//   REALMUSIC_API_URL   single instance (used if URLS is not set)
+// Cobalt: ALWAYS tries the Railway instance first. REALMUSIC_API_URLS / REALMUSIC_API_URL
+// (optional, comma-separated) are only extra backups tried after it.
 //   REALMUSIC_API_KEY   (optional)
 
 import { rateLimit, parseBody } from './_guard.js';
 
-const DEFAULT_API = 'https://cobalt-tools-production-0cd6.up.railway.app';
+const RAILWAY_COBALT = 'https://cobalt-tools-production-0cd6.up.railway.app';
 const YT_ID = /^[A-Za-z0-9_-]{11}$/;
 const MIN_BYTES = 1024;
 
@@ -27,8 +27,11 @@ function buildYoutubeUrl(idOrUrl) {
 }
 
 function apiBases() {
-  const raw = process.env.REALMUSIC_API_URLS || process.env.REALMUSIC_API_URL || DEFAULT_API;
-  return raw.split(',').map((x) => x.trim().replace(/\/$/, '')).filter(Boolean);
+  const extra = (process.env.REALMUSIC_API_URLS || process.env.REALMUSIC_API_URL || '')
+    .split(',')
+    .map((x) => x.trim().replace(/\/$/, ''))
+    .filter(Boolean);
+  return [RAILWAY_COBALT, ...extra.filter((x) => x !== RAILWAY_COBALT)];
 }
 
 async function callCobalt(youtubeUrl, key, opt) {
@@ -48,7 +51,7 @@ async function callCobalt(youtubeUrl, key, opt) {
     method: 'POST',
     headers,
     body: JSON.stringify(payload),
-    signal: AbortSignal.timeout(20000),
+    signal: AbortSignal.timeout(12000),
   });
   const data = await r.json().catch(() => null);
   return { ok: r.ok, status: r.status, data };
@@ -83,21 +86,29 @@ async function openTunnel(youtubeUrl, key, opt, wantStream) {
   if (!fileUrl) return { ok: false, error: `no file url from cobalt (status=${c.data.status})` };
   if (!wantStream) return { ok: true, data: c.data, fileUrl, filename };
 
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), 25000); // only guards the START of the download
   let fr;
   try {
-    fr = await fetch(fileUrl, { signal: AbortSignal.timeout(40000) });
+    fr = await fetch(fileUrl, { signal: ac.signal });
   } catch (e) {
-    return { ok: false, error: `tunnel: ${e.name === 'TimeoutError' ? 'timeout' : e.message || 'network'}` };
+    clearTimeout(timer);
+    return { ok: false, error: `tunnel: ${e.name === 'AbortError' ? 'timeout' : e.message || 'network'}` };
   }
-  if (!fr.ok || !fr.body) return { ok: false, error: `tunnel http ${fr.status}` };
+  if (!fr.ok || !fr.body) {
+    clearTimeout(timer);
+    return { ok: false, error: `tunnel http ${fr.status}` };
+  }
 
   const reader = fr.body.getReader();
   let first;
   try {
     first = await reader.read();
   } catch (e) {
+    clearTimeout(timer);
     return { ok: false, error: `tunnel read: ${e.message || 'failed'}` };
   }
+  clearTimeout(timer);
   const n = first && first.value ? first.value.length : 0;
   const declared = Number(fr.headers.get('content-length') || 0);
   // empty tunnel (200 OK with no / tiny body) -> treat as failure so we can retry
@@ -144,12 +155,16 @@ export default async function handler(req, res) {
   const t0 = Date.now();
 
   let last = { error: 'unknown' };
+  const trail = [];
   try {
     for (const opt of attempts) {
       if (Date.now() - t0 > 19000) break;
       const t = await openTunnel(youtubeUrl, key, opt, wantStream);
       if (!t.ok) {
         last = t;
+        let host = 'cobalt';
+        try { host = new URL(opt.base).hostname.split('.')[0]; } catch {}
+        trail.push(`${host}/${opt.audioFormat}: ${t.error}`);
         continue;
       }
 
@@ -189,5 +204,5 @@ export default async function handler(req, res) {
     try { res.end(); } catch {}
     return undefined;
   }
-  return res.status(502).json({ status: 'error', error: last.error || 'download failed' });
+  return res.status(502).json({ status: 'error', error: last.error || 'download failed', detail: trail.join(' ; ') });
 }

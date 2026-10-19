@@ -48,10 +48,19 @@ export default async function handler(req, res) {
   // ?proxy=1 -> pipe the bytes through our server (no browser CORS problems, no 4.5MB buffering)
   if (req.query && String(req.query.proxy) === '1') {
     try {
-      const fr = await fetch(target, { redirect: 'follow', signal: AbortSignal.timeout(40000) });
-      if (!fr.ok || !fr.body) return res.status(502).json({ error: `upstream ${fr.status}` });
+      const ac = new AbortController();
+      const timer = setTimeout(() => ac.abort(), 25000); // only guards the START of the download
+      let fr;
+      try {
+        fr = await fetch(target, { redirect: 'follow', signal: ac.signal });
+      } catch (e) {
+        clearTimeout(timer);
+        throw e;
+      }
+      if (!fr.ok || !fr.body) { clearTimeout(timer); return res.status(502).json({ error: `upstream ${fr.status}` }); }
       const reader = fr.body.getReader();
       const first = await reader.read();
+      clearTimeout(timer);
       if (first.done || !first.value || first.value.length === 0) {
         try { await reader.cancel(); } catch {}
         return res.status(502).json({ error: 'upstream returned an empty file' });

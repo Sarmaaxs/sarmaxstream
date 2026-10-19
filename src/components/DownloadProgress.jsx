@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Link, useLocation } from 'react-router-dom';
 import { Loader2, Check, X, RotateCw, AlertTriangle, Music } from 'lucide-react';
 import { useDownloads, dismissDownload, retryDownload } from '@/lib/downloadManager';
@@ -98,23 +98,30 @@ export function ActiveDownloads() {
   );
 }
 
-/** Floating card (top of the screen) so progress is visible on every music page. */
+/** Floating card: appears briefly when a download starts / finishes / fails, then hides itself.
+ *  Live progress stays available on the Downloads page. */
 export default function DownloadProgress() {
   const jobs = useDownloads();
   const { pathname } = useLocation();
-  if (!jobs.length || pathname.endsWith('/downloads')) return null;
-  const shown = jobs.slice(-3);
+  const [, force] = useState(0);
+  const now = Date.now();
+  const visible = jobs.filter((j) => (j.toastUntil || 0) > now);
+
+  useEffect(() => {
+    const next = jobs.map((j) => j.toastUntil || 0).filter((t) => t > Date.now());
+    if (!next.length) return undefined;
+    const id = setTimeout(() => force((x) => x + 1), Math.min(...next) - Date.now() + 30);
+    return () => clearTimeout(id);
+  }, [jobs]);
+
+  if (!visible.length || pathname.endsWith('/downloads')) return null;
   return (
     <div className="fixed z-[80] left-2 right-2 md:left-auto md:right-4 md:w-96 top-[calc(env(safe-area-inset-top,0px)+0.5rem)] space-y-2 pointer-events-none">
-      {shown.map((j) => (
+      {visible.slice(-2).map((j) => (
         <div key={j.key} className="pointer-events-auto">
-          {j.status === 'error' ? (
+          <Link to="/music/downloads" className="block">
             <JobRow job={j} />
-          ) : (
-            <Link to="/music/downloads" className="block">
-              <JobRow job={j} />
-            </Link>
-          )}
+          </Link>
         </div>
       ))}
     </div>

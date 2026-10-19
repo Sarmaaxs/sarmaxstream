@@ -1,12 +1,16 @@
 import React, { useState, useEffect } from "react";
 import { Link, useLocation } from "react-router-dom";
-import { Bookmark, LogIn, UserRound, Settings as SettingsIcon } from "lucide-react";
+import { Bookmark, LogIn, UserRound, Settings as SettingsIcon, Download as DownloadIcon } from "lucide-react";
+import { useDownloads } from "@/lib/downloadManager";
 import { supabase } from "@/api/supabaseClient";
 import SearchBox from "@/components/SearchBox";
 import SearchBar from "@/components/SearchBar";
 
 export default function Navbar() {
   const location = useLocation();
+  const dlJobs = useDownloads();
+  const dlActive = dlJobs.filter((j) => j.status === 'resolving' || j.status === 'downloading' || j.status === 'saving').length;
+  const dlFailed = dlJobs.filter((j) => j.status === 'error').length;
   const [scrolled, setScrolled] = useState(false);
   const [authed, setAuthed] = useState(false);
 
@@ -70,6 +74,17 @@ export default function Navbar() {
             aria-label="Settings"
             className="flex items-center justify-center h-10 w-10 rounded-full bg-white/5 border border-border/60 hover:bg-white/10 transition-colors">
             <SettingsIcon className="w-4 h-4" />
+          </Link>
+          <Link
+            to="/music/downloads"
+            aria-label="Downloads"
+            className="relative flex items-center justify-center h-10 w-10 rounded-full bg-white/5 border border-border/60 hover:bg-white/10 transition-colors">
+            <DownloadIcon className="w-4 h-4" />
+            {(dlActive > 0 || dlFailed > 0) &&
+            <span className={`absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] leading-[18px] text-center font-semibold ${dlFailed > 0 && dlActive === 0 ? 'bg-red-500 text-white' : 'bg-primary text-primary-foreground'}`}>
+                {dlActive > 0 ? dlActive : dlFailed}
+              </span>
+            }
           </Link>
           {authed ?
           <>

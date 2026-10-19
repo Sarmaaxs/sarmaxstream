@@ -21,6 +21,7 @@ const emit = () => {
   jobs = jobs.slice();
   listeners.forEach((f) => f());
 };
+const TOAST_MS = 2200;
 const patch = (key, p) => {
   jobs = jobs.map((j) => (j.key === key ? { ...j, ...p } : j));
   listeners.forEach((f) => f());
@@ -112,7 +113,7 @@ async function fetchAudioBlob(src, onProgress) {
     let msg = `HTTP ${res.status}`;
     try {
       const j = await res.json();
-      if (j && j.error) msg = String(j.error);
+      if (j && (j.detail || j.error)) msg = String(j.detail || j.error);
     } catch {}
     throw new Error(`${src.kind}: ${msg}`);
   }
@@ -174,7 +175,7 @@ async function run(track, key) {
 
   try {
     if (isNative && (await hasOffline(track.videoId).catch(() => false))) {
-      patch(key, { status: 'done', message: 'Already saved — play it from Downloads' });
+      patch(key, { status: 'done', toastUntil: Date.now() + TOAST_MS, message: 'Already saved — play it from Downloads' });
       autoClear(key, 4000);
       return;
     }
@@ -231,14 +232,15 @@ async function run(track, key) {
 
     patch(key, {
       status: 'done',
+      toastUntil: Date.now() + TOAST_MS,
       via,
       size: blob.size,
       message: isNative ? 'Saved — play it from Downloads' : 'Downloaded',
     });
-    autoClear(key, 5000);
+    autoClear(key, 6000);
   } catch (e) {
     console.warn('Download failed', e, errors);
-    patch(key, { status: 'error', message: friendly(e && e.message), error: String((e && e.message) || e).slice(0, 300) });
+    patch(key, { status: 'error', toastUntil: Date.now() + 3500, message: friendly(e && e.message), error: String((e && e.message) || e).slice(0, 300) });
   }
 }
 
@@ -261,6 +263,7 @@ export function startDownload(track) {
     loaded: 0,
     total: 0,
     startedAt: Date.now(),
+    toastUntil: Date.now() + TOAST_MS,
   };
   jobs = jobs.filter((j) => j.key !== key).concat(job);
   emit();
