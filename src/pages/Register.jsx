@@ -10,7 +10,7 @@ import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp
 import AuthLayout from "@/components/AuthLayout";
 import GoogleIcon from "@/components/GoogleIcon";
 import { toast } from "@/components/ui/use-toast";
-import { safeReturnTo } from "@/lib/authReturnTo";
+import { safeReturnTo, rememberReturnTo } from "@/lib/authReturnTo";
 import { isNative } from "@/lib/native";
 
 export default function Register() {
@@ -31,10 +31,11 @@ export default function Register() {
     }
     setLoading(true);
     try {
+      rememberReturnTo(safeReturnTo());
       const { data, error: signUpError } = await supabase.auth.signUp({
         email,
         password,
-        options: { emailRedirectTo: window.location.origin + safeReturnTo() },
+        options: { emailRedirectTo: window.location.origin },
       });
       if (signUpError) throw signUpError;
       // Supabase hides "already registered" by returning a user with no identities and sending no email
@@ -82,7 +83,8 @@ export default function Register() {
   };
 
   const handleGoogle = () => {
-    supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: window.location.origin + safeReturnTo() } });
+    rememberReturnTo(safeReturnTo());
+    supabase.auth.signInWithOAuth({ provider: "google", options: { redirectTo: window.location.origin } });
   };
 
   if (showOtp) {

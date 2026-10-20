@@ -13,9 +13,18 @@ import { imageUrl } from "@/lib/tmdb";
 // ---------------------------------------------------------------------------
 
 const SERVER_KEY = "sarmaxstream:movie-server";
-// ALWAYS sandboxed: no allow-popups and no allow-top-navigation, so the embedded player
-// can neither open pop-up windows nor redirect / take over the app.
+const SAFE_KEY = "sarmaxstream:movie-popup-block";
+// Websites: the player runs sandboxed (no allow-popups, no allow-top-navigation), so it can neither
+// open pop-ups nor take over the page. Some servers answer "please disable sandbox", which a website
+// cannot fix, so there is a switch below the player to turn the protection off.
 const SANDBOX = "allow-scripts allow-same-origin allow-forms allow-presentation";
+// Android app (new build): the app itself swallows every pop-up and outside redirect (see
+// mobile/MainActivity.java), so the player needs NO sandbox and servers that refuse sandboxes just work.
+const SHIELDED = typeof navigator !== "undefined" && /SxShield/.test(navigator.userAgent);
+function readSafe() {
+  if (SHIELDED) return false;
+  try { return localStorage.getItem(SAFE_KEY) !== "off"; } catch { return true; }
+}
 
 const VL = "primaryColor=e5484d&secondaryColor=a2a2a2&iconColor=ffffff&title=true&poster=true&autoplay=true";
 const SERVERS = [
@@ -45,6 +54,7 @@ export default function VideoPlayer({
   similar = [], episodes = [], seasons = [], pageSeason, onSeasonChange, onEpisodeChange,
 }) {
   const navigate = useNavigate();
+  const [safe, setSafe] = useState(readSafe);
 
   const tv = mediaType === "tv";
   const s = season || 1;
@@ -53,13 +63,13 @@ export default function VideoPlayer({
   const { index, onLoad, failedAll, retry, switchServer } = useAutoServer({
     ids: SERVER_IDS,
     storageKey: SERVER_KEY,
-    resetKey: `${tmdbId}|${mediaType}|${s}|${e}|${open}`,
+    resetKey: `${tmdbId}|${mediaType}|${s}|${e}|${open}|${safe}`,
     getSrc: (i) => SERVERS[i].url(tv, id, s, e),
   });
   const src = SERVERS[index].url(tv, id, s, e);
   const [loading, setLoading] = useState(true);
   // spinner again when the movie / episode / server changes
-  useEffect(() => { setLoading(true); }, [open, src]);
+  useEffect(() => { setLoading(true); }, [open, src, safe]);
 
   // remember for "Continue Watching"
   useEffect(() => {
@@ -92,6 +102,13 @@ export default function VideoPlayer({
   );
 
   if (!open) return null;
+
+  const toggleSafe = () => {
+    const next = !safe;
+    setSafe(next);
+    setLoading(true);
+    try { localStorage.setItem(SAFE_KEY, next ? "on" : "off"); } catch { /* ignore */ }
+  };
 
   const openTitle = (it) => {
     navigate(`/title/${it._type}/${it.id}`, { state: { autoplay: true } });
@@ -210,13 +227,13 @@ export default function VideoPlayer({
               </div>
             ) : (
             <iframe
-              key={src}
+              key={`${src}|${safe}`}
               src={src}
               title={title}
               allowFullScreen
               referrerPolicy="origin"
               allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
-              sandbox={SANDBOX}
+              sandbox={safe ? SANDBOX : undefined}
               className="absolute inset-0 w-full h-full"
               style={{ border: 0 }}
               onLoad={() => { setLoading(false); onLoad(); }}
@@ -238,7 +255,12 @@ export default function VideoPlayer({
             )}
           </div>
           <div className="px-3 sm:px-0 pt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
-            <span className="flex items-center gap-1"><ShieldCheck className="w-3.5 h-3.5" /> Pop-ups and redirects are blocked</span>
+            <span className="flex items-center gap-1"><ShieldCheck className="w-3.5 h-3.5" /> {SHIELDED ? "Pop-ups are blocked by the app" : safe ? "Pop-ups and redirects are blocked" : "Protection off: pop-ups may appear"}</span>
+            {!SHIELDED && (
+              <button onClick={toggleSafe} aria-pressed={safe} title="Some servers say 'please disable sandbox'. Turn protection off only for those." className="flex items-center gap-1 hover:text-foreground transition underline-offset-2 hover:underline">
+                {safe ? "Server says “disable sandbox”? Turn protection off" : "Turn protection back on"}
+              </button>
+            )}
             <button onClick={switchServer} className="flex items-center gap-1 hover:text-foreground transition">
               <RefreshCw className="w-3.5 h-3.5" /> Not playing? Try another server (now: Server {index + 1})
             </button>

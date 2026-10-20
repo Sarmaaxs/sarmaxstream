@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Mail, Lock, Loader2, Eye, EyeOff, CheckCircle2 } from "lucide-react";
 import AuthLayout from "@/components/AuthLayout";
 import GoogleIcon from "@/components/GoogleIcon";
-import { safeReturnTo } from "@/lib/authReturnTo";
+import { safeReturnTo, rememberReturnTo } from "@/lib/authReturnTo";
 import { isNative } from "@/lib/native";
 
 const fieldCls =
@@ -65,9 +65,10 @@ export default function Login() {
     setError("");
     setLoading(true);
     try {
+      rememberReturnTo(returnTo);
       const { error: otpError } = await supabase.auth.signInWithOtp({
         email: email.trim(),
-        options: { shouldCreateUser: false, emailRedirectTo: window.location.origin + returnTo },
+        options: { shouldCreateUser: false, emailRedirectTo: window.location.origin },
       });
       if (otpError) throw otpError;
       setLinkSent(true);
@@ -78,11 +79,15 @@ export default function Login() {
     }
   };
 
-  const handleGoogle = () => {
-    supabase.auth.signInWithOAuth({
+  const handleGoogle = async () => {
+    setError("");
+    rememberReturnTo(returnTo);
+    // Redirect to the site root only: it is always on Supabase's allowed list, which avoids "requested path is invalid".
+    const { error: oErr } = await supabase.auth.signInWithOAuth({
       provider: "google",
-      options: { redirectTo: window.location.origin + returnTo },
+      options: { redirectTo: window.location.origin },
     });
+    if (oErr) setError(friendlyAuthError(oErr));
   };
 
   return (

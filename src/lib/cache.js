@@ -89,3 +89,15 @@ export async function idbSet(key, val) {
     });
   } catch { /* ignore */ }
 }
+
+export async function idbDel(key) {
+  try {
+    const db = await openDb();
+    await new Promise((resolve) => {
+      const tx = db.transaction('kv', 'readwrite');
+      tx.objectStore('kv').delete(key);
+      tx.oncomplete = resolve;
+      tx.onerror = resolve;
+    });
+  } catch { /* ignore */ }
+}

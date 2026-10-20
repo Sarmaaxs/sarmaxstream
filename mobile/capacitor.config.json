@@ -10,7 +10,7 @@
   },
   "android": {
     "allowMixedContent": false,
-    "appendUserAgent": "SarmaxstreamApp",
+    "appendUserAgent": "SarmaxstreamApp SxShield/1",
     "webContentsDebuggingEnabled": false
   },
   "plugins": {

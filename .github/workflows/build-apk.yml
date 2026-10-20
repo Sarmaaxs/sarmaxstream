@@ -39,6 +39,12 @@ jobs:
       - name: Create the Android project
         run: npx cap add android
 
+      - name: Block pop-ups and outside redirects (native shield)
+        run: |
+          DIR=android/app/src/main/java/com/sarmaxstream/app
+          mkdir -p "$DIR"
+          cp MainActivity.java "$DIR/MainActivity.java"
+
       - name: Icon and splash screen
         run: |
           pip install pillow

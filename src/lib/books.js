@@ -3,6 +3,7 @@ import { cachedJson } from '@/lib/cache';
 const SAVED_KEY = 'sarmax_books_saved';
 const PROGRESS_KEY = 'sarmax_books_progress';
 const PREFS_KEY = 'sarmax_reader_prefs';
+const DL_KEY = 'sarmax_books_downloaded';
 
 function read(key, def) {
   try { const v = localStorage.getItem(key); return v ? JSON.parse(v) : def; } catch { return def; }
@@ -55,4 +56,15 @@ export async function fetchJsonRetry(url, init, tries = 3, ttlMs = 0) {
     if (i < tries - 1) await new Promise((res) => setTimeout(res, 700 * (i + 1)));
   }
   return last || { error: 'The book library is busy right now. Try again in a moment.' };
+}
+
+// ---- books saved for offline reading (the Android app only) ----
+export const getDownloaded = () => read(DL_KEY, []);
+export const isDownloadedBook = (id) => getDownloaded().some((b) => b.id === Number(id));
+export function markDownloaded(book) {
+  const list = getDownloaded().filter((b) => b.id !== Number(book.id));
+  write(DL_KEY, [{ id: Number(book.id), title: book.title, author: book.author, cover: book.cover, at: Date.now() }, ...list]);
+}
+export function unmarkDownloaded(id) {
+  write(DL_KEY, getDownloaded().filter((b) => b.id !== Number(id)));
 }

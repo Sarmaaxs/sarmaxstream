@@ -8,6 +8,8 @@ import { AuthProvider, useAuth } from '@/lib/AuthContext';
 import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import ScrollToTop from './components/ScrollToTop';
 import RouteMemory from '@/components/RouteMemory';
+import AuthReturnHandler from '@/components/AuthReturnHandler';
+import CookieBanner from '@/components/CookieBanner';
 import MobileBottomNav from '@/components/MobileBottomNav';
 import Footer from '@/components/Footer';
 // Add page imports here
@@ -155,6 +157,8 @@ function App() {
         <Router>
           <ScrollToTop />
           <RouteMemory />
+          <AuthReturnHandler />
+          <CookieBanner />
           <AuthenticatedApp />
         </Router>
         <Toaster />

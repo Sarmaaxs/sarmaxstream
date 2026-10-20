@@ -27,3 +27,19 @@ export function safeReturnTo() {
     return "/";
   }
 }
+
+// OAuth / email links must go back to an address that is on Supabase's allowed list.
+// The site root is always allowed, so we send people there and remember the page they wanted
+// ourselves; AuthReturnHandler then moves them to it after they are signed in.
+const KEY = "sx:auth-return";
+export function rememberReturnTo(path) {
+  try { localStorage.setItem(KEY, JSON.stringify({ path: path || "/", t: Date.now() })); } catch { /* ignore */ }
+}
+export function takeReturnTo() {
+  try {
+    const v = JSON.parse(localStorage.getItem(KEY) || "null");
+    localStorage.removeItem(KEY);
+    if (!v || !v.path || Date.now() - v.t > 30 * 60 * 1000) return null;
+    return v.path.startsWith("/") && !v.path.startsWith("//") && !v.path.includes("\\") ? v.path : null;
+  } catch { return null; }
+}

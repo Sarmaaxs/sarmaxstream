@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, BookOpen, X, Bookmark, Sparkles, Clock } from 'lucide-react';
+import { Search, BookOpen, X, Bookmark, Sparkles, Clock, Download } from 'lucide-react';
 import Navbar from '@/components/Navbar';
 import BookCover from '@/components/BookCover';
-import { continueReading, getSaved, fetchJsonRetry } from '@/lib/books';
+import { continueReading, getSaved, getDownloaded, fetchJsonRetry } from '@/lib/books';
+import { isNative } from '@/lib/native';
 
 async function api(body) {
   return fetchJsonRetry('/api/searchBooks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, 3, 30 * 60 * 1000);
@@ -100,8 +101,9 @@ export default function Books() {
   const [error, setError] = useState('');
   const [resume, setResume] = useState([]);
   const [saved, setSaved] = useState([]);
+  const [downloaded, setDownloaded] = useState([]);
 
-  useEffect(() => { setResume(continueReading()); setSaved(getSaved()); }, []);
+  useEffect(() => { setResume(continueReading()); setSaved(getSaved()); if (isNative) setDownloaded(getDownloaded()); }, []);
 
   // search while typing (waits until you pause), or instantly on Enter / chip tap
   useEffect(() => {
@@ -176,6 +178,12 @@ export default function Books() {
         </div>
 
         {!term && <ContinueRow items={resume.slice(0, 10)} />}
+        {!term && isNative && downloaded.length > 0 && (
+          <section>
+            <SectionTitle icon={Download}>Downloaded · works offline</SectionTitle>
+            <Grid books={downloaded} progress={progressMap} />
+          </section>
+        )}
         {!term && saved.length > 0 && (
           <section>
             <SectionTitle icon={Bookmark}>Saved for later</SectionTitle>
