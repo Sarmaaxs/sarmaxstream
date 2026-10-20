@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
 import { supabase } from "@/api/supabaseClient";
+import { friendlyAuthError } from "@/lib/authErrors";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -36,13 +37,17 @@ export default function Register() {
         options: { emailRedirectTo: window.location.origin + safeReturnTo() },
       });
       if (signUpError) throw signUpError;
+      // Supabase hides "already registered" by returning a user with no identities and sending no email
+      if (data.user && Array.isArray(data.user.identities) && data.user.identities.length === 0) {
+        throw new Error("This email is already registered");
+      }
       if (data.session) {
         window.location.href = safeReturnTo();
         return;
       }
       setShowOtp(true);
     } catch (err) {
-      setError(err.message || "Registration failed");
+      setError(friendlyAuthError(err, "Registration failed"));
     } finally {
       setLoading(false);
     }
@@ -56,7 +61,7 @@ export default function Register() {
       if (otpError) throw otpError;
       window.location.href = safeReturnTo();
     } catch (err) {
-      setError(err.message || "Invalid verification code");
+      setError(friendlyAuthError(err, "Invalid verification code"));
     } finally {
       setLoading(false);
     }

@@ -36,12 +36,7 @@ export default function SearchResults() {
   const [tracks, setTracks] = useState([]);
   const [artists, setArtists] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [recent, setRecent] = useState([]);
   const [why, setWhy] = useState(null);
-
-  useEffect(() => {
-    try { setRecent(JSON.parse(localStorage.getItem(RECENT_KEY) || '[]')); } catch {}
-  }, [q]);
 
   useEffect(() => {
     if (!q) { setTracks([]); setArtists([]); setLoading(false); return undefined; }
@@ -65,16 +60,7 @@ export default function SearchResults() {
     <div className="space-y-6">
       <SearchBar initial={q} />
 
-      {!q && recent.length > 0 && (
-        <div>
-          <h2 className="text-sm font-semibold text-white/70 mb-2">Recent searches</h2>
-          <div className="flex flex-wrap gap-2">
-            {recent.map((r) => (
-              <Link key={r} to={`/music/search?q=${encodeURIComponent(r)}`} className="glass rounded-full px-3 py-1.5 text-sm text-white/80">{r}</Link>
-            ))}
-          </div>
-        </div>
-      )}
+      {!q && <p className="text-sm text-white/40">Type a song or artist and press Enter.</p>}
 
       {q && <h1 className="text-2xl md:text-3xl font-bold">Songs for “{q}”</h1>}
 

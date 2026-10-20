@@ -1,40 +1,91 @@
 import React, { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Loader2, BookOpen, X } from 'lucide-react';
+import { Search, BookOpen, X, Bookmark, Sparkles, Clock } from 'lucide-react';
 import Navbar from '@/components/Navbar';
+import BookCover from '@/components/BookCover';
 import { continueReading, getSaved, fetchJsonRetry } from '@/lib/books';
 
 async function api(body) {
   return fetchJsonRetry('/api/searchBooks', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, 3, 30 * 60 * 1000);
 }
 
+// Author searches work well with the book catalogue.
+const AUTHORS = ['Jane Austen', 'Charles Dickens', 'Mark Twain', 'Arthur Conan Doyle', 'H. G. Wells', 'Edgar Allan Poe', 'Jules Verne', 'Oscar Wilde', 'Shakespeare', 'Dostoyevsky'];
+
+function pctOf(progress) {
+  return progress && progress.total ? Math.round(((progress.page + 1) / progress.total) * 100) : 0;
+}
+
 function BookCard({ b, progress }) {
-  const pct = progress && progress.total ? Math.round(((progress.page + 1) / progress.total) * 100) : 0;
+  const pct = pctOf(progress);
   return (
-    <Link to={`/books/read/${b.id}`} className="group block">
-      <div className="aspect-[2/3] rounded-xl overflow-hidden bg-white/5 border border-white/10 relative">
-        {b.cover ? (
-          <img src={b.cover} alt="" loading="lazy" className="w-full h-full object-cover group-hover:scale-[1.03] transition" />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center p-3 text-center text-sm text-white/60">{b.title}</div>
-        )}
+    <Link to={`/books/read/${b.id}`} className="group block focus:outline-none">
+      <div className="relative transition-transform duration-300 group-hover:-translate-y-1.5 group-focus-visible:-translate-y-1.5">
+        <BookCover book={b} className="shadow-lg shadow-black/40 ring-1 ring-white/10 group-hover:ring-primary/50 group-focus-visible:ring-primary" />
         {pct > 0 && (
-          <div className="absolute bottom-0 inset-x-0 h-1.5 bg-black/50"><div className="h-full bg-primary" style={{ width: `${pct}%` }} /></div>
+          <div className="absolute bottom-0 inset-x-0 h-1.5 bg-black/60">
+            <div className="h-full bg-primary" style={{ width: `${pct}%` }} />
+          </div>
         )}
       </div>
-      <div className="mt-2 text-sm font-medium line-clamp-2 leading-snug">{b.title}</div>
-      <div className="text-xs text-white/50 truncate">{b.author}</div>
+      <div className="mt-2.5 px-0.5">
+        <div className="text-sm font-semibold leading-snug line-clamp-2 group-hover:text-primary transition-colors">{b.title}</div>
+        <div className="text-xs text-white/50 truncate mt-0.5">{b.author}</div>
+      </div>
     </Link>
   );
 }
 
-function Shelf({ title, books, progress }) {
-  if (!books.length) return null;
+function SectionTitle({ icon: Icon, children }) {
+  return (
+    <h2 className="flex items-center gap-2 text-lg sm:text-xl font-display font-bold mb-4 text-white/95">
+      {Icon && <Icon size={18} className="text-primary" />} {children}
+    </h2>
+  );
+}
+
+function Grid({ books, progress }) {
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-x-4 gap-y-7">
+      {books.map((b) => <BookCard key={b.id} b={b} progress={progress ? progress[b.id] : null} />)}
+    </div>
+  );
+}
+
+function SkeletonGrid() {
+  return (
+    <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 2xl:grid-cols-7 gap-x-4 gap-y-7">
+      {Array.from({ length: 14 }).map((_, i) => (
+        <div key={i}>
+          <div className="aspect-[2/3] rounded-xl bg-white/5 animate-pulse" />
+          <div className="h-3 w-4/5 rounded bg-white/5 animate-pulse mt-3" />
+          <div className="h-3 w-1/2 rounded bg-white/5 animate-pulse mt-2" />
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function ContinueRow({ items }) {
+  if (!items.length) return null;
   return (
     <section>
-      <h2 className="text-lg font-semibold mb-3 text-white/90">{title}</h2>
-      <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-8 gap-3 sm:gap-4">
-        {books.map((b) => <BookCard key={b.id} b={b} progress={progress ? progress[b.id] : null} />)}
+      <SectionTitle icon={Clock}>Continue reading</SectionTitle>
+      <div className="flex gap-4 overflow-x-auto no-scrollbar pb-2 snap-x -mx-4 px-4 sm:mx-0 sm:px-0">
+        {items.map((r) => {
+          const pct = pctOf(r);
+          return (
+            <Link key={r.id} to={`/books/read/${r.id}`} className="snap-start shrink-0 w-[22rem] max-w-[85vw] flex gap-3 p-3 rounded-2xl bg-white/[0.04] border border-white/10 hover:bg-white/[0.08] hover:border-primary/40 transition">
+              <div className="w-16 shrink-0"><BookCover book={r} className="shadow-md shadow-black/40" /></div>
+              <div className="min-w-0 flex-1 flex flex-col justify-center">
+                <div className="text-sm font-semibold line-clamp-2 leading-snug">{r.title}</div>
+                <div className="text-xs text-white/50 truncate mt-0.5">{r.author}</div>
+                <div className="mt-3 h-1.5 rounded-full bg-white/10 overflow-hidden"><div className="h-full bg-primary" style={{ width: `${Math.max(pct, 2)}%` }} /></div>
+                <div className="text-[11px] text-white/50 mt-1.5">{pct}% read · page {r.page + 1}{r.total ? ` of ${r.total}` : ''}</div>
+              </div>
+            </Link>
+          );
+        })}
       </div>
     </section>
   );
@@ -51,6 +102,15 @@ export default function Books() {
   const [saved, setSaved] = useState([]);
 
   useEffect(() => { setResume(continueReading()); setSaved(getSaved()); }, []);
+
+  // search while typing (waits until you pause), or instantly on Enter / chip tap
+  useEffect(() => {
+    const v = q.trim();
+    if (v === term) return undefined;
+    if (v.length === 1) return undefined;
+    const t = setTimeout(() => setTerm(v), 450);
+    return () => clearTimeout(t);
+  }, [q, term]);
 
   useEffect(() => {
     let active = true;
@@ -71,46 +131,71 @@ export default function Books() {
   }, [term]);
 
   const submit = (e) => { e.preventDefault(); setTerm(q.trim()); };
+  const pick = (name) => { setQ(name); setTerm(name); };
+  const clear = () => { setQ(''); setTerm(''); };
   const progressMap = Object.fromEntries(resume.map((r) => [r.id, r]));
 
   return (
     <div className="min-h-screen bg-background">
       <Navbar />
-      <div className="pt-nav pb-page mx-auto max-w-[1600px] px-4 sm:px-6 lg:px-10 space-y-8">
-        <div className="flex flex-col items-center text-center gap-4 pt-2">
-          <h1 className="font-display font-extrabold tracking-tight text-4xl sm:text-5xl flex items-center gap-3">
-            <BookOpen className="text-primary" size={36} /> Books
+      <div className="pt-nav pb-page mx-auto max-w-[1600px] px-4 sm:px-6 lg:px-10 space-y-10">
+        {/* hero */}
+        <div className="relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-white/[0.07] via-white/[0.03] to-transparent px-5 py-8 sm:px-10 sm:py-12 text-center">
+          <div className="absolute -top-24 -right-24 w-72 h-72 rounded-full bg-primary/10 blur-3xl pointer-events-none" />
+          <h1 className="relative font-display font-extrabold tracking-tight text-4xl sm:text-5xl flex items-center justify-center gap-3">
+            <BookOpen className="text-primary" size={38} /> Books
           </h1>
-          <p className="text-sm text-white/50 max-w-md">Thousands of classic books, free to read right here. Your place is saved automatically.</p>
-          <form onSubmit={submit} className="relative w-full max-w-xl" role="search">
-            <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40" />
+          <p className="relative mt-3 text-sm sm:text-base text-white/55 max-w-lg mx-auto">Thousands of classic books, free to read right here. Your page is saved automatically.</p>
+          <form onSubmit={submit} className="relative mt-6 mx-auto w-full max-w-xl" role="search">
+            <Search size={18} className="absolute left-4 top-1/2 -translate-y-1/2 text-white/40 pointer-events-none" />
             <input
               type="search"
               value={q}
               onChange={(e) => setQ(e.target.value)}
               placeholder="Search by title or author…"
               enterKeyHint="search"
-              className="w-full glass rounded-full pl-12 pr-10 py-3 text-base text-white placeholder:text-white/40 outline-none border border-white/10 focus:border-primary/60"
+              autoComplete="off"
+              className="w-full h-12 rounded-full bg-black/40 pl-12 pr-11 text-base text-white placeholder:text-white/40 outline-none border border-white/15 focus:border-primary/70 focus:ring-2 focus:ring-primary/30"
             />
             {(q || term) && (
-              <button type="button" aria-label="Clear" onClick={() => { setQ(''); setTerm(''); }} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 text-white/40"><X size={16} /></button>
+              <button type="button" aria-label="Clear" onClick={clear} className="absolute right-3 top-1/2 -translate-y-1/2 p-1 rounded-full text-white/50 hover:text-white hover:bg-white/10"><X size={16} /></button>
             )}
           </form>
+          <div className="relative mt-5 flex gap-2 overflow-x-auto no-scrollbar justify-start sm:justify-center sm:flex-wrap pb-1">
+            {AUTHORS.map((a) => (
+              <button
+                key={a}
+                type="button"
+                onClick={() => pick(a)}
+                className={`shrink-0 h-8 px-3.5 rounded-full text-xs font-medium border transition ${term === a ? 'bg-primary text-primary-foreground border-primary' : 'bg-white/5 border-white/15 text-white/75 hover:bg-white/10'}`}
+              >
+                {a}
+              </button>
+            ))}
+          </div>
         </div>
 
-        {!term && <Shelf title="Continue reading" books={resume.slice(0, 8)} progress={progressMap} />}
-        {!term && <Shelf title="Saved for later" books={saved.slice(0, 16)} progress={progressMap} />}
-
-        {loading ? (
-          <div className="flex justify-center py-16 text-white/40"><Loader2 className="animate-spin" /></div>
-        ) : error ? (
-          <div className="glass rounded-2xl py-10 text-center text-sm text-white/50">{error}</div>
-        ) : term ? (
-          books.length ? <Shelf title={`Results for “${term}”`} books={books} progress={progressMap} />
-            : <div className="glass rounded-2xl py-10 text-center text-sm text-white/50">No books found. Try a different title or author.</div>
-        ) : (
-          <Shelf title="Popular classics" books={popular} progress={progressMap} />
+        {!term && <ContinueRow items={resume.slice(0, 10)} />}
+        {!term && saved.length > 0 && (
+          <section>
+            <SectionTitle icon={Bookmark}>Saved for later</SectionTitle>
+            <Grid books={saved.slice(0, 14)} progress={progressMap} />
+          </section>
         )}
+
+        <section>
+          <SectionTitle icon={term ? Search : Sparkles}>{term ? `Results for “${term}”` : 'Popular classics'}</SectionTitle>
+          {loading ? (
+            <SkeletonGrid />
+          ) : error ? (
+            <div className="rounded-2xl border border-white/10 bg-white/[0.03] py-12 text-center text-sm text-white/55">{error}</div>
+          ) : term ? (
+            books.length ? <Grid books={books} progress={progressMap} />
+              : <div className="rounded-2xl border border-white/10 bg-white/[0.03] py-12 text-center text-sm text-white/55">No books found. Try a different title or author.</div>
+          ) : (
+            <Grid books={popular} progress={progressMap} />
+          )}
+        </section>
 
         <p className="text-center text-xs text-white/30 pb-4">Books come from Project Gutenberg — free, public-domain works.</p>
       </div>

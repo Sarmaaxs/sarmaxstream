@@ -67,9 +67,17 @@ export function useAutoServer({ ids, storageKey, resetKey, getSrc }) {
     try { localStorage.setItem(storageKey, ids[index]); } catch { /* ignore */ }
   }, [resetKey, fresh, storageKey, ids, index]);
 
+  // manual "try the next server" (wraps around)
+  const switchServer = useCallback(() => {
+    setSt((s) => {
+      const base = s.key === resetKey ? s : fresh();
+      return { ...base, loaded: false, tries: (base.tries + 1) % n };
+    });
+  }, [resetKey, fresh, n]);
+
   const retry = useCallback(() => {
     setSt({ key: resetKey, start: 0, tries: 0, loaded: false });
   }, [resetKey]);
 
-  return { index, onLoad, failedAll, retry };
+  return { index, onLoad, failedAll, retry, switchServer };
 }

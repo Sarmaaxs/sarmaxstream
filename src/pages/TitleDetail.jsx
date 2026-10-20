@@ -1,4 +1,3 @@
-import DownloadButton from "@/components/DownloadButton";
 import React, { useEffect, useRef, useState } from "react";
 import { useParams, Link, useLocation } from "react-router-dom";
 import { Play, Star, Clock, Calendar } from "lucide-react";
@@ -14,6 +13,7 @@ export default function TitleDetail() {
   const { type, id } = useParams();
   const location = useLocation();
   const autoplayRef = useRef(false);
+  const resumeRef = useRef(null); // { season, episode } when the app is reopened mid-watch
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -25,6 +25,7 @@ export default function TitleDetail() {
   useEffect(() => {
     setPlayer({ open: false, season: null, episode: null });
     autoplayRef.current = !!(location.state && location.state.autoplay);
+    resumeRef.current = (location.state && location.state.resume) || null;
   }, [type, id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
@@ -38,7 +39,8 @@ export default function TitleDetail() {
         setData(d);
         if (type === "tv" && d?.seasons?.length) {
           const firstReal = d.seasons.find((s) => s.season_number > 0) || d.seasons[0];
-          setSeason(firstReal?.season_number || 1);
+          const rs = resumeRef.current && resumeRef.current.season;
+          setSeason(rs || firstReal?.season_number || 1);
         }
       } catch (e) {
         setError(e.message || "Failed to load");
@@ -75,13 +77,27 @@ export default function TitleDetail() {
     if (!autoplayRef.current || !data || String(data.id) !== String(id)) return; // wait until THIS title has loaded
     if (type === "tv") {
       if (!episodes.length) return;
+      const r = resumeRef.current;
+      if (r && r.season && r.season !== season) return; // wait for the saved season's episodes
       autoplayRef.current = false;
-      setPlayer({ open: true, season, episode: episodes[0].episode_number || 1 });
+      resumeRef.current = null;
+      setPlayer({ open: true, season, episode: (r && r.episode) || episodes[0].episode_number || 1 });
     } else {
       autoplayRef.current = false;
       setPlayer({ open: true, season: null, episode: null });
     }
   }, [data, episodes, type, season, id]);
+
+  // remember what is being watched, so reopening the app puts you back in the player
+  useEffect(() => {
+    try {
+      if (player.open) {
+        localStorage.setItem("sx:last-watch", JSON.stringify({ type, id: String(id), season: player.season, episode: player.episode, t: Date.now() }));
+      } else {
+        localStorage.removeItem("sx:last-watch");
+      }
+    } catch { /* ignore */ }
+  }, [player.open, player.season, player.episode, type, id]);
 
   if (loading) {
     return (
@@ -181,7 +197,6 @@ export default function TitleDetail() {
               <WatchlistButton
                 item={{ id: data.id, media_type: type, title, poster_path: data.poster_path, backdrop_path: data.backdrop_path }}
               />
-              {type === "movie" && <DownloadButton tmdbId={data.id} mediaType={type} />}
             </div>
             {data.genres?.length > 0 && (
               <div className="flex flex-wrap gap-2 mb-4">

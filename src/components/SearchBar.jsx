@@ -66,7 +66,7 @@ export default function SearchBar({ initial = '' }) {
           ref={inputRef}
           value={q}
           onChange={(e) => { typed.current = true; setQ(e.target.value); }}
-          onFocus={() => results.length && setOpen(true)}
+          onFocus={() => { if (typed.current && q.trim().length >= 2 && results.length) setOpen(true); }}
           placeholder="Search songs…"
           className="w-full glass rounded-full pl-12 pr-10 py-3 text-sm text-white placeholder:text-white/40 outline-none focus:border-primary/60 border border-white/10"
         />

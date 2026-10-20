@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ArrowLeft, Loader2, SkipBack, SkipForward, Star, ShieldCheck, Play } from "lucide-react";
+import { ArrowLeft, Loader2, SkipBack, SkipForward, Star, ShieldCheck, Play, RefreshCw } from "lucide-react";
 import { useAutoServer } from "@/lib/useAutoServer";
 import { recordContinueWatching } from "@/lib/library";
 import { imageUrl } from "@/lib/tmdb";
@@ -13,9 +13,9 @@ import { imageUrl } from "@/lib/tmdb";
 // ---------------------------------------------------------------------------
 
 const SERVER_KEY = "sarmaxstream:movie-server";
-const SAFE_KEY = "sarmaxstream:movie-popup-block";
-const SANDBOX = "allow-scripts allow-same-origin allow-forms allow-presentation allow-popups allow-popups-to-escape-sandbox";
-const IS_MOBILE = typeof navigator !== "undefined" && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+// ALWAYS sandboxed: no allow-popups and no allow-top-navigation, so the embedded player
+// can neither open pop-up windows nor redirect / take over the app.
+const SANDBOX = "allow-scripts allow-same-origin allow-forms allow-presentation";
 
 const VL = "primaryColor=e5484d&secondaryColor=a2a2a2&iconColor=ffffff&title=true&poster=true&autoplay=true";
 const SERVERS = [
@@ -37,13 +37,6 @@ const SERVERS = [
   },
 ];
 
-function readSafe() {
-  try {
-    const v = localStorage.getItem(SAFE_KEY);
-    if (v) return v === "on";
-  } catch { /* ignore */ }
-  return !IS_MOBILE; // some mobile embeds refuse to play inside a sandbox
-}
 const SERVER_IDS = SERVERS.map((x) => x.id);
 
 export default function VideoPlayer({
@@ -52,22 +45,21 @@ export default function VideoPlayer({
   similar = [], episodes = [], seasons = [], pageSeason, onSeasonChange, onEpisodeChange,
 }) {
   const navigate = useNavigate();
-  const [safe, setSafe] = useState(readSafe);
 
   const tv = mediaType === "tv";
   const s = season || 1;
   const e = episode || 1;
   const id = encodeURIComponent(tmdbId);
-  const { index, onLoad, failedAll, retry } = useAutoServer({
+  const { index, onLoad, failedAll, retry, switchServer } = useAutoServer({
     ids: SERVER_IDS,
     storageKey: SERVER_KEY,
-    resetKey: `${tmdbId}|${mediaType}|${s}|${e}|${open}|${safe}`,
+    resetKey: `${tmdbId}|${mediaType}|${s}|${e}|${open}`,
     getSrc: (i) => SERVERS[i].url(tv, id, s, e),
   });
   const src = SERVERS[index].url(tv, id, s, e);
   const [loading, setLoading] = useState(true);
   // spinner again when the movie / episode / server changes
-  useEffect(() => { setLoading(true); }, [open, src, safe]);
+  useEffect(() => { setLoading(true); }, [open, src]);
 
   // remember for "Continue Watching"
   useEffect(() => {
@@ -100,13 +92,6 @@ export default function VideoPlayer({
   );
 
   if (!open) return null;
-
-  const toggleSafe = () => {
-    const next = !safe;
-    setSafe(next);
-    setLoading(true);
-    try { localStorage.setItem(SAFE_KEY, next ? "on" : "off"); } catch { /* ignore */ }
-  };
 
   const openTitle = (it) => {
     navigate(`/title/${it._type}/${it.id}`, { state: { autoplay: true } });
@@ -225,13 +210,13 @@ export default function VideoPlayer({
               </div>
             ) : (
             <iframe
-              key={`${src}|${safe}`}
+              key={src}
               src={src}
               title={title}
               allowFullScreen
               referrerPolicy="origin"
               allow="autoplay; fullscreen; encrypted-media; picture-in-picture"
-              sandbox={safe ? SANDBOX : undefined}
+              sandbox={SANDBOX}
               className="absolute inset-0 w-full h-full"
               style={{ border: 0 }}
               onLoad={() => { setLoading(false); onLoad(); }}
@@ -253,8 +238,9 @@ export default function VideoPlayer({
             )}
           </div>
           <div className="px-3 sm:px-0 pt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
-            <button onClick={toggleSafe} aria-pressed={safe} title="Stops the player from redirecting this page. Turn it off if a server refuses to play." className="flex items-center gap-1 hover:text-foreground transition">
-              <ShieldCheck className="w-3.5 h-3.5" /> Block redirects: {safe ? "On" : "Off"}
+            <span className="flex items-center gap-1"><ShieldCheck className="w-3.5 h-3.5" /> Pop-ups and redirects are blocked</span>
+            <button onClick={switchServer} className="flex items-center gap-1 hover:text-foreground transition">
+              <RefreshCw className="w-3.5 h-3.5" /> Not playing? Try another server (now: Server {index + 1})
             </button>
           </div>
 

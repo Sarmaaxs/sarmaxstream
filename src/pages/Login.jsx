@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { Link } from "react-router-dom";
-import { supabase } from "@/api/supabaseClient";
+import { supabase, authConfigured } from "@/api/supabaseClient";
+import { friendlyAuthError } from "@/lib/authErrors";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -22,20 +23,37 @@ export default function Login() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [linkSent, setLinkSent] = useState(false);
+  const [needsConfirm, setNeedsConfirm] = useState(false);
+  const [resent, setResent] = useState(false);
   const returnTo = safeReturnTo();
+
+  const resendConfirmation = async () => {
+    try {
+      const { error: e } = await supabase.auth.resend({ type: "signup", email: email.trim() });
+      if (e) throw e;
+      setResent(true);
+    } catch (err) {
+      setError(friendlyAuthError(err));
+    }
+  };
 
   const switchMode = (m) => { setMode(m); setError(""); setLinkSent(false); };
 
   const handlePassword = async (e) => {
     e.preventDefault();
     setError("");
+    setNeedsConfirm(false);
+    setResent(false);
+    if (!authConfigured) { setError(friendlyAuthError("missing.supabase")); return; }
     setLoading(true);
     try {
-      const { error: signInError } = await supabase.auth.signInWithPassword({ email, password });
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({ email: email.trim(), password });
       if (signInError) throw signInError;
-      window.location.href = returnTo;
+      if (!data || !data.session) throw new Error("Sign-in did not return a session. Please try again.");
+      window.location.replace(returnTo);
     } catch (err) {
-      setError(err.message || "Invalid email or password");
+      if (/email not confirmed/i.test(String((err && err.message) || ""))) setNeedsConfirm(true);
+      setError(friendlyAuthError(err, "Invalid email or password"));
     } finally {
       setLoading(false);
     }
@@ -48,13 +66,13 @@ export default function Login() {
     setLoading(true);
     try {
       const { error: otpError } = await supabase.auth.signInWithOtp({
-        email,
+        email: email.trim(),
         options: { shouldCreateUser: false, emailRedirectTo: window.location.origin + returnTo },
       });
       if (otpError) throw otpError;
       setLinkSent(true);
     } catch (err) {
-      setError(err.message || "Couldn't send the link. Please try again.");
+      setError(friendlyAuthError(err, "Couldn't send the link. Please try again."));
     } finally {
       setLoading(false);
     }
@@ -124,6 +142,13 @@ export default function Login() {
       {error && (
         <div role="alert" className="mb-4 rounded-lg bg-red-500/10 border border-red-500/20 text-red-300 text-sm px-3 py-2">
           {error}
+          {needsConfirm && (
+            <div className="mt-2">
+              {resent
+                ? <span className="text-white/70">Confirmation sent. Check your inbox.</span>
+                : <button type="button" onClick={resendConfirmation} className="text-primary hover:underline">Resend confirmation email</button>}
+            </div>
+          )}
         </div>
       )}
 

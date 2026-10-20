@@ -31,3 +31,10 @@ if (import.meta.env.VITE_SENTRY_DSN) {
   if ('requestIdleCallback' in window) requestIdleCallback(start, { timeout: 4000 })
   else setTimeout(start, 2000)
 }
+
+// Offline support: a service worker keeps the app and recently seen pages available without internet.
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  });
+}
