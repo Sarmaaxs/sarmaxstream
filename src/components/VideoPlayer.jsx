@@ -89,6 +89,14 @@ export default function VideoPlayer({
     return () => { document.body.style.overflow = prev; };
   }, [open]);
 
+  // Android app: keep the screen on while a movie is open
+  useEffect(() => {
+    if (!open) return undefined;
+    const n = typeof window !== "undefined" ? window.SxNative : null;
+    try { if (n && n.keepScreenOn) n.keepScreenOn(true); } catch { /* ignore */ }
+    return () => { try { if (n && n.keepScreenOn) n.keepScreenOn(false); } catch { /* ignore */ } };
+  }, [open]);
+
   // Android Back closes the player first
   useEffect(() => {
     if (!open) return undefined;

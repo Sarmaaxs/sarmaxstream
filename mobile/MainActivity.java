@@ -7,7 +7,13 @@ import android.content.pm.PackageManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.view.View;
+import android.view.ViewGroup;
+import android.view.WindowManager;
+import android.widget.FrameLayout;
+import android.content.pm.ActivityInfo;
 import android.webkit.JavascriptInterface;
+import android.webkit.WebChromeClient;
 import android.webkit.RenderProcessGoneDetail;
 import android.webkit.WebResourceRequest;
 import android.webkit.WebSettings;
@@ -18,6 +24,7 @@ import androidx.annotation.RequiresApi;
 import androidx.core.content.ContextCompat;
 
 import com.getcapacitor.BridgeActivity;
+import com.getcapacitor.BridgeWebChromeClient;
 import com.getcapacitor.BridgeWebViewClient;
 
 /**
@@ -28,12 +35,19 @@ import com.getcapacitor.BridgeWebViewClient;
  *  2. BACK BUTTON        asks the page what to do; on Home it sends the app to the background, never closes it
  *  3. BACKGROUND AUDIO   while music plays a foreground service keeps the app (and the sound) alive
  *  4. COMES BACK         remembers the last page and reopens it after hours; recovers if Android killed the web view
+ *  5. NOTIFICATION       Previous / Pause / Next buttons for the music (see AudioKeepAliveService)
+ *  6. VIDEO              real full-screen (landscape) for video players, and the screen stays on while watching
+ *  7. SHORTCUTS          long-press the app icon: Music, Search, Books, Anime
  */
 public class MainActivity extends BridgeActivity {
   private static final String[] OWN_HOSTS = { "sarmaxstreams.vercel.app", "localhost" };
   private static final long RESTORE_MAX_AGE = 7L * 24 * 60 * 60 * 1000;
 
+  static volatile MainActivity current;
   private volatile boolean keepAlive = false;
+  private String pendingIntentUrl = null;
+  private View customView = null;
+  private WebChromeClient.CustomViewCallback customCallback = null;
   private String restoreUrl = null;
   private boolean restoreDone = false;
 
@@ -60,8 +74,53 @@ public class MainActivity extends BridgeActivity {
     } catch (Exception e) { return true; }
   }
 
+  /** Runs a piece of JavaScript in the web page (used by the notification buttons). */
+  static void callJs(final String js) {
+    final MainActivity a = current;
+    if (a == null) return;
+    a.runOnUiThread(new Runnable() {
+      @Override public void run() {
+        try { a.getBridge().getWebView().evaluateJavascript(js, null); } catch (Exception ignored) { }
+      }
+    });
+  }
+
+  private void sxShowCustom(View view, WebChromeClient.CustomViewCallback cb) {
+    if (customView != null) { cb.onCustomViewHidden(); return; }
+    customView = view;
+    customCallback = cb;
+    ((ViewGroup) getWindow().getDecorView()).addView(view,
+        new FrameLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
+    getWindow().getDecorView().setSystemUiVisibility(
+        View.SYSTEM_UI_FLAG_FULLSCREEN | View.SYSTEM_UI_FLAG_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+            | View.SYSTEM_UI_FLAG_LAYOUT_STABLE | View.SYSTEM_UI_FLAG_LAYOUT_HIDE_NAVIGATION | View.SYSTEM_UI_FLAG_LAYOUT_FULLSCREEN);
+    setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_SENSOR_LANDSCAPE);
+  }
+
+  private void sxHideCustom() {
+    if (customView == null) return;
+    ((ViewGroup) getWindow().getDecorView()).removeView(customView);
+    customView = null;
+    getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_VISIBLE);
+    setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED);
+    if (customCallback != null) {
+      try { customCallback.onCustomViewHidden(); } catch (Exception ignored) { }
+      customCallback = null;
+    }
+  }
+
   /** The web page calls this (window.SxNative.setPlaying) when music starts or stops. */
   private class SxNative {
+    @JavascriptInterface
+    public void keepScreenOn(final boolean on) {
+      MainActivity.this.runOnUiThread(new Runnable() {
+        @Override public void run() {
+          if (on) MainActivity.this.getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+          else MainActivity.this.getWindow().clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
+        }
+      });
+    }
+
     @JavascriptInterface
     public void setPlaying(boolean playing, String title, String artist) {
       keepAlive = playing;
@@ -85,6 +144,7 @@ public class MainActivity extends BridgeActivity {
   @Override
   public void onCreate(Bundle savedInstanceState) {
     super.onCreate(savedInstanceState);
+    current = this;
 
     final WebView webView = getBridge().getWebView();
     final WebSettings settings = webView.getSettings();
@@ -100,7 +160,22 @@ public class MainActivity extends BridgeActivity {
       if (u != null && System.currentTimeMillis() - t < RESTORE_MAX_AGE && isOwnUrl(u) && !isRoot(u)) restoreUrl = u;
     } catch (Exception ignored) { }
 
+    // opened from an app-icon shortcut?
+    try {
+      Uri d = getIntent() != null ? getIntent().getData() : null;
+      if (d != null && isOwnUrl(d.toString())) pendingIntentUrl = d.toString();
+    } catch (Exception ignored) { }
+
     webView.addJavascriptInterface(new SxNative(), "SxNative");
+
+    // real full-screen for video players (the default web view cannot do it)
+    webView.setWebChromeClient(new BridgeWebChromeClient(getBridge()) {
+      @Override
+      public void onShowCustomView(View view, WebChromeClient.CustomViewCallback callback) { sxShowCustom(view, callback); }
+
+      @Override
+      public void onHideCustomView() { sxHideCustom(); }
+    });
 
     webView.setWebViewClient(new BridgeWebViewClient(getBridge()) {
       @Override
@@ -127,6 +202,13 @@ public class MainActivity extends BridgeActivity {
       @Override
       public void onPageFinished(WebView view, String url) {
         super.onPageFinished(view, url);
+        if (pendingIntentUrl != null && url != null && isOwnUrl(url)) {
+          String target = pendingIntentUrl;
+          pendingIntentUrl = null;
+          restoreDone = true;
+          view.loadUrl(target);
+          return;
+        }
         // Fallback: the page itself normally restores the last screen. If it is still on the start
         // page a moment later, open the saved page directly.
         if (restoreUrl != null && !restoreDone && url != null && isOwnUrl(url) && isRoot(url)) {
@@ -155,6 +237,7 @@ public class MainActivity extends BridgeActivity {
     getOnBackPressedDispatcher().addCallback(this, new OnBackPressedCallback(true) {
       @Override
       public void handleOnBackPressed() {
+        if (customView != null) { sxHideCustom(); return; } // leave full-screen video first
         webView.evaluateJavascript("(function(){return window.__sxBack?window.__sxBack():'minimize'})()", value -> {
           if (value == null || value.contains("minimize") || value.contains("null")) moveTaskToBack(true);
         });
@@ -166,6 +249,21 @@ public class MainActivity extends BridgeActivity {
         && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
       requestPermissions(new String[] { Manifest.permission.POST_NOTIFICATIONS }, 7);
     }
+  }
+
+  @Override
+  public void onNewIntent(Intent intent) {
+    super.onNewIntent(intent);
+    try {
+      Uri d = intent != null ? intent.getData() : null;
+      if (d != null && isOwnUrl(d.toString())) getBridge().getWebView().loadUrl(d.toString());
+    } catch (Exception ignored) { }
+  }
+
+  @Override
+  public void onDestroy() {
+    if (current == this) current = null;
+    super.onDestroy();
   }
 
   private void saveState() {

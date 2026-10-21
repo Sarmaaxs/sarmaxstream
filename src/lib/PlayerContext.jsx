@@ -491,6 +491,16 @@ export function PlayerProvider({ children }) {
     return () => clearTimeout(stopNativeTimer.current);
   }, [isPlaying, current]);
 
+  // Previous / Pause / Next buttons of the Android notification call this.
+  useEffect(() => {
+    window.__sxMedia = (cmd) => {
+      if (cmd === 'next') next();
+      else if (cmd === 'prev') prev();
+      else if (cmd === 'toggle') togglePlay();
+    };
+    return () => { delete window.__sxMedia; };
+  }, [next, prev, togglePlay]);
+
   useEffect(() => {
     if (typeof navigator === 'undefined' || !navigator.mediaSession) return;
     try {

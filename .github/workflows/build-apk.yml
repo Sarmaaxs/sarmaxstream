@@ -39,24 +39,13 @@ jobs:
       - name: Create the Android project
         run: npx cap add android
 
-      - name: Native features (pop-up shield, back button, background music, resume)
+      - name: Native features (pop-ups, back button, music notification, video, shortcuts)
         run: |
           DIR=android/app/src/main/java/com/sarmaxstream/app
           mkdir -p "$DIR"
           cp MainActivity.java "$DIR/MainActivity.java"
           cp AudioKeepAliveService.java "$DIR/AudioKeepAliveService.java"
-          python3 - android/app/src/main/AndroidManifest.xml <<'PY'
-          import sys
-          m = sys.argv[1]
-          s = open(m).read()
-          perms = ["android.permission.FOREGROUND_SERVICE", "android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK",
-                   "android.permission.POST_NOTIFICATIONS", "android.permission.WAKE_LOCK"]
-          add = "".join('    <uses-permission android:name="%s" />\n' % p for p in perms if p not in s)
-          s = s.replace("<application", add + "    <application", 1)
-          svc = '        <service android:name=".AudioKeepAliveService" android:exported="false" android:foregroundServiceType="mediaPlayback" />\n'
-          s = s.replace("</application>", svc + "    </application>", 1)
-          open(m, "w").write(s)
-          PY
+          python3 patch_android.py android
           grep -n "AudioKeepAliveService\|FOREGROUND_SERVICE" android/app/src/main/AndroidManifest.xml
 
       - name: Icon and splash screen
