@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef, useCallback } from 'react';
 import { useSettings } from '@/lib/useSettings';
 import { cachedJson } from '@/lib/cache';
+import { pushBackHandler } from '@/lib/backStack';
 
 const PlayerContext = createContext(null);
 
@@ -472,6 +473,23 @@ export function PlayerProvider({ children }) {
     }, sleepTimer * 60000);
     return () => clearTimeout(id);
   }, [sleepTimer]);
+
+  // Android Back closes the full-screen player first
+  useEffect(() => (nowPlayingOpen ? pushBackHandler(() => setNowPlayingOpen(false)) : undefined), [nowPlayingOpen]);
+
+  // Tell the Android app when music is playing, so it can keep the sound going in the background.
+  // (Stopping is delayed a few seconds so the gap between two songs does not end the background mode.)
+  const stopNativeTimer = useRef(0);
+  useEffect(() => {
+    const n = typeof window !== 'undefined' ? window.SxNative : null;
+    if (!n || !n.setPlaying) return undefined;
+    clearTimeout(stopNativeTimer.current);
+    try {
+      if (isPlaying) n.setPlaying(true, (current && current.title) || '', (current && current.artist) || '');
+      else stopNativeTimer.current = setTimeout(() => { try { n.setPlaying(false, '', ''); } catch { /* ignore */ } }, 8000);
+    } catch { /* ignore */ }
+    return () => clearTimeout(stopNativeTimer.current);
+  }, [isPlaying, current]);
 
   useEffect(() => {
     if (typeof navigator === 'undefined' || !navigator.mediaSession) return;

@@ -35,7 +35,10 @@ export default function RouteMemory() {
       const savedPathname = saved.path.split(/[?#]/)[0];
       const state = watchPath && savedPathname === watchPath ? { autoplay: true, resume } : undefined;
       navigate(saved.path, { replace: true, state });
-    } else if (watchPath && loc.pathname === watchPath && !(history.state && history.state.usr && history.state.usr.autoplay)) {
+    } else if (saved && saved.path === here && saved.y > 0 && Date.now() - saved.t < MAX_AGE && loc.pathname !== '/') {
+      pending.current = saved.y; // the Android app reopened this exact page: just restore the scroll
+    }
+    if (!bareRoot && watchPath && loc.pathname === watchPath && !(history.state && history.state.usr && history.state.usr.autoplay)) {
       // page was reloaded while a movie was playing: reopen the player
       navigate(here, { replace: true, state: { autoplay: true, resume } });
     }

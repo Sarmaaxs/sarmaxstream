@@ -3,6 +3,7 @@ import ReactDOM from 'react-dom/client'
 import App from '@/App.jsx'
 import '@/index.css'
 import { applyPrefs } from '@/lib/prefs'
+import { getCookie } from '@/lib/cookies'
 
 applyPrefs() // saved accent color, text size and motion setting, before first paint
 
@@ -11,7 +12,7 @@ class ErrorBoundary extends React.Component {
   state = { failed: false }
   static getDerivedStateFromError() { return { failed: true } }
   componentDidCatch(error) {
-    import('@/lib/sentry').then((m) => m.Sentry.captureException(error)).catch(() => {})
+    if (getCookie('sx_consent') === 'all') import('@/lib/sentry').then((m) => m.Sentry.captureException(error)).catch(() => {})
   }
   render() {
     if (this.state.failed) return <p style={{ padding: 24 }}>Something went wrong. Please reload the app.</p>
@@ -27,7 +28,14 @@ ReactDOM.createRoot(document.getElementById('root')).render(
 
 // Load error monitoring AFTER the page is already usable.
 if (import.meta.env.VITE_SENTRY_DSN) {
-  const start = () => import('@/lib/sentry').then((m) => m.initSentry()).catch(() => {})
+  // error reports only after the person accepted all cookies
+  let started = false
+  const start = () => {
+    if (started || getCookie('sx_consent') !== 'all') return
+    started = true
+    import('@/lib/sentry').then((m) => m.initSentry()).catch(() => {})
+  }
+  window.addEventListener('sx:consent', start)
   if ('requestIdleCallback' in window) requestIdleCallback(start, { timeout: 4000 })
   else setTimeout(start, 2000)
 }

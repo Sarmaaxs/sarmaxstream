@@ -400,3 +400,18 @@ html.reduce-motion *, html.reduce-motion *::before, html.reduce-motion *::after 
   animation-play-state: running;
   filter: saturate(1.25) brightness(1.05);
 }
+
+
+/* ===== Accessibility: clear keyboard focus + respect "reduce motion" ===== */
+:focus-visible {
+  outline: 2px solid hsl(var(--primary));
+  outline-offset: 2px;
+}
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

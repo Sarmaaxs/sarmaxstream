@@ -7,6 +7,7 @@ import {
 } from '@/lib/books';
 import { idbGet, idbSet, idbDel } from '@/lib/cache';
 import { isNative } from '@/lib/native';
+import { pushBackHandler } from '@/lib/backStack';
 
 /* ---------------------------------------------------------------------------
    Light-weight reader.
@@ -209,6 +210,8 @@ export default function BookReader() {
     }, 400);
   };
   useEffect(() => () => clearTimeout(scrollTimer.current), []);
+
+  useEffect(() => (panel ? pushBackHandler(() => setPanel(null)) : undefined), [panel]);
 
   // ---------- moving around ----------
   const go = useCallback((d) => setIdx((i) => clamp(i + d, 0, Math.max(0, N - 1))), [N]);

@@ -1,5 +1,6 @@
 import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { pushBackHandler } from "@/lib/backStack";
 import { ArrowLeft, Loader2, SkipBack, SkipForward, Star, ShieldCheck, Play, RefreshCw } from "lucide-react";
 import { useAutoServer } from "@/lib/useAutoServer";
 import { recordContinueWatching } from "@/lib/library";
@@ -87,6 +88,12 @@ export default function VideoPlayer({
     document.body.style.overflow = "hidden";
     return () => { document.body.style.overflow = prev; };
   }, [open]);
+
+  // Android Back closes the player first
+  useEffect(() => {
+    if (!open) return undefined;
+    return pushBackHandler(() => onClose());
+  }, [open, onClose]);
 
   // Esc closes
   useEffect(() => {

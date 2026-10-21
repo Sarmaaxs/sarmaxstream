@@ -9,7 +9,10 @@ import UserNotRegisteredError from '@/components/UserNotRegisteredError';
 import ScrollToTop from './components/ScrollToTop';
 import RouteMemory from '@/components/RouteMemory';
 import AuthReturnHandler from '@/components/AuthReturnHandler';
-import CookieBanner from '@/components/CookieBanner';
+import CookieBanner, { useConsent } from '@/components/CookieBanner';
+import NativeBackButton from '@/components/NativeBackButton';
+import OfflineBanner from '@/components/OfflineBanner';
+import InstallPrompt from '@/components/InstallPrompt';
 import MobileBottomNav from '@/components/MobileBottomNav';
 import Footer from '@/components/Footer';
 // Add page imports here
@@ -45,6 +48,12 @@ import { SettingsProvider } from '@/lib/useSettings';
 import { PlayerProvider } from '@/lib/PlayerContext';
 // Analytics is not needed to show the page, so it loads separately, later.
 const Analytics = lazy(() => import("@vercel/analytics/react").then((m) => ({ default: m.Analytics })));
+
+// Visit statistics only run after the person chose "Accept all" in the cookie notice.
+const AnalyticsGate = () => {
+  const consent = useConsent();
+  return consent === 'all' ? <Suspense fallback={null}><Analytics /></Suspense> : null;
+};
 
 // Signed-out visitors of a protected page go to sign-in and come back afterwards.
 const LoginRedirect = () => {
@@ -159,10 +168,13 @@ function App() {
           <RouteMemory />
           <AuthReturnHandler />
           <CookieBanner />
+          <NativeBackButton />
+          <OfflineBanner />
+          <InstallPrompt />
           <AuthenticatedApp />
         </Router>
         <Toaster />
-        <Suspense fallback={null}><Analytics /></Suspense>
+        <AnalyticsGate />
       </QueryClientProvider>
       </SettingsProvider>
     </AuthProvider>
