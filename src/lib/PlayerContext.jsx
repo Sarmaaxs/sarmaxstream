@@ -481,7 +481,6 @@ export function PlayerProvider({ children }) {
   // Tell the Android app when music is playing, so it can keep the sound going in the background.
   // (Stopping is delayed a few seconds so the gap between two songs does not end the background mode.)
   const stopNativeTimer = useRef(0);
-  const timeRef = useRef(0);
   timeRef.current = currentTime;
   const durRef = useRef(0);
   durRef.current = duration;
