@@ -7,6 +7,8 @@ import {
   clearSearchHistory, clearRecentlyPlayed, clearCachedData, exportLocalData, resetEverythingLocal,
 } from '@/lib/prefs';
 import { toast } from '@/components/ui/use-toast';
+import { isNative } from '@/lib/native';
+import { canSaveToPhone } from '@/lib/nativeFiles';
 import Navbar from '@/components/Navbar';
 import { Switch } from '@/components/ui/switch';
 import { Slider } from '@/components/ui/slider';
@@ -14,7 +16,7 @@ import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@
 import { Button } from '@/components/ui/button';
 import {
   Volume2, Zap, GitMerge, Gauge, Bell, LogOut, LogIn, User, Activity, Moon,
-  Palette, Type, Sparkles, Languages, History, Keyboard, Download, RotateCcw, Database, ShieldCheck, Check, Music4,
+  Palette, Type, Sparkles, Languages, History, Keyboard, Download, RotateCcw, Database, ShieldCheck, Check, Music4, Lock, Smartphone,
 } from 'lucide-react';
 
 function Row({ icon, title, desc, children }) {
@@ -42,6 +44,7 @@ function Section({ id, title, children }) {
 }
 
 const NAV = [
+  ...(isNative ? [['android', 'Android app']] : []),
   ['appearance', 'Appearance'],
   ['content', 'Content'],
   ['playback', 'Music'],
@@ -160,6 +163,30 @@ export default function Settings() {
           </Row>
         </div>
       </Section>
+
+      {/* Android app only */}
+      {isNative && (
+        <Section id="android" title="Android app">
+          <div className="divide-y divide-white/5">
+            <Row icon={<Smartphone size={18} />} title="Save songs to your phone" desc={canSaveToPhone() ? 'Downloaded songs are also saved as files in your Music folder, so other apps can play them.' : 'Needs the latest app version. Update the app to turn this on.'}>
+              <Switch checked={prefs.saveToPhone !== false} disabled={!canSaveToPhone()} onCheckedChange={(v) => setPref('saveToPhone', v)} />
+            </Row>
+            <Row icon={<Lock size={18} />} title="Lock the app" desc="Ask for your fingerprint, face or screen lock when you open the app. Also hides the app in the recent-apps list.">
+              <Switch
+                checked={!!prefs.appLock}
+                disabled={!(window.SxNative && window.SxNative.setAppLock)}
+                onCheckedChange={(v) => {
+                  try {
+                    const ok = window.SxNative.setAppLock(v);
+                    if (!ok) { toast({ title: 'Set a screen lock first', description: 'Add a PIN, pattern or fingerprint in your phone settings, then try again.' }); return; }
+                    setPref('appLock', v);
+                  } catch { toast({ title: 'Could not change the lock' }); }
+                }}
+              />
+            </Row>
+          </div>
+        </Section>
+      )}
 
       {/* Music playback */}
       <Section id="playback" title="Music playback">

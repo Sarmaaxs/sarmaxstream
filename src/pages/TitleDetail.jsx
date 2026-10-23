@@ -4,6 +4,7 @@ import { Play, Star, Clock, Calendar } from "lucide-react";
 import Navbar from "@/components/Navbar";
 import BackButton from "@/components/BackButton";
 import WatchlistButton from "@/components/WatchlistButton";
+import ShareButton from "@/components/ShareButton";
 import VideoPlayer from "@/components/VideoPlayer";
 import MovieRow from "@/components/MovieRow";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -197,6 +198,7 @@ export default function TitleDetail() {
               <WatchlistButton
                 item={{ id: data.id, media_type: type, title, poster_path: data.poster_path, backdrop_path: data.backdrop_path }}
               />
+              <ShareButton title={title} />
             </div>
             {data.genres?.length > 0 && (
               <div className="flex flex-wrap gap-2 mb-4">

@@ -4,6 +4,8 @@
 import { useSyncExternalStore } from 'react';
 import { saveOffline, hasOffline } from '@/lib/offlineDownloads';
 import { isNative } from '@/lib/native';
+import { canSaveToPhone, saveBlobToPhone } from '@/lib/nativeFiles';
+import { getPrefs } from '@/lib/prefs';
 import { downloadYoutubeOnDevice, deviceDownloadAvailable } from '@/lib/ytDevice';
 
 const YT_ID = /^[A-Za-z0-9_-]{11}$/;
@@ -223,8 +225,16 @@ async function run(track, key) {
 
     patch(key, { status: 'saving', message: 'Saving…', loaded: blob.size, total: blob.size });
 
+    let savedWhere = null;
     if (isNative) {
-      await saveOffline(track, blob); // the app WebView cannot write files: keep it in the app
+      await saveOffline(track, blob); // always keep a copy inside the app (works offline in the app)
+      // new app build: also save a real file in the phone's Music folder
+      if (canSaveToPhone() && getPrefs().saveToPhone !== false) {
+        const base = safeFilename(track.title, track.artist);
+        const ext = extFor(blob);
+        const typed = blob.type ? blob : new Blob([blob], { type: ext === '.m4a' ? 'audio/mp4' : ext === '.ogg' ? 'audio/ogg' : ext === '.webm' ? 'audio/webm' : 'audio/mpeg' });
+        savedWhere = await saveBlobToPhone(typed, base + ext, 'music').catch(() => null);
+      }
     } else {
       forceSaveBlob(blob, safeFilename(track.title, track.artist) + extFor(blob));
       try { await saveOffline(track, blob); } catch {}
@@ -235,7 +245,7 @@ async function run(track, key) {
       toastUntil: Date.now() + TOAST_MS,
       via,
       size: blob.size,
-      message: isNative ? 'Saved — play it from Downloads' : 'Downloaded',
+      message: isNative ? (savedWhere ? `Saved to ${savedWhere}` : 'Saved — play it from Downloads') : 'Downloaded',
     });
     autoClear(key, 6000);
   } catch (e) {

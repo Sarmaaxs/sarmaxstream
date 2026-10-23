@@ -1,46 +1,26 @@
-import React, { useState } from 'react';
-import { Share2, Check } from 'lucide-react';
+import React from "react";
+import { Share2 } from "lucide-react";
+import { toast } from "@/components/ui/use-toast";
 
-export default function ShareButton({ track, className = '', title = 'Copy link' }) {
-  const [copied, setCopied] = useState(false);
-
-  const buildUrl = () => {
-    const base = window.location.origin;
-    const p = new URLSearchParams();
-    p.set('v', track.videoId);
-    if (track.title) p.set('t', track.title);
-    if (track.artist) p.set('a', track.artist);
-    return `${base}/?${p.toString()}`;
-  };
-
-  const share = async (e) => {
-    e.stopPropagation();
-    const url = buildUrl();
+// Android app: the system share sheet. Browsers: the Web Share dialog, or copy the link.
+export default function ShareButton({ title, text, className = "" }) {
+  const share = async () => {
+    const url = window.location.href;
+    const message = [text || title, url].filter(Boolean).join("\n");
     try {
-      if (navigator.share) {
-        await navigator.share({ title: track.title || 'Sarmax Stream', url });
-        return;
-      }
-    } catch {}
-    try {
+      if (window.SxNative && window.SxNative.share) { window.SxNative.share(message); return; }
+      if (navigator.share) { await navigator.share({ title, text: text || title, url }); return; }
       await navigator.clipboard.writeText(url);
-    } catch {
-      const ta = document.createElement('textarea');
-      ta.value = url;
-      ta.style.position = 'fixed';
-      ta.style.opacity = '0';
-      document.body.appendChild(ta);
-      ta.select();
-      try { document.execCommand('copy'); } catch {}
-      document.body.removeChild(ta);
-    }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 1600);
+      toast({ title: "Link copied" });
+    } catch { /* cancelled */ }
   };
-
   return (
-    <button onClick={share} className={`p-1.5 rounded-lg hover:bg-white/5 ${copied ? 'text-primary' : 'text-white/40 hover:text-white'} ${className}`} title={title}>
-      {copied ? <Check size={17} /> : <Share2 size={17} />}
+    <button
+      onClick={share}
+      aria-label="Share"
+      className={`h-12 px-5 rounded-full bg-white/10 border border-white/15 hover:bg-white/15 transition flex items-center gap-2 text-sm font-medium ${className}`}
+    >
+      <Share2 size={18} /> Share
     </button>
   );
 }

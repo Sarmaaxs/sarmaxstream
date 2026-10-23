@@ -7,15 +7,26 @@ import android.app.PendingIntent;
 import android.app.Service;
 import android.content.Intent;
 import android.content.pm.ServiceInfo;
+import android.graphics.Bitmap;
+import android.graphics.BitmapFactory;
+import android.media.MediaMetadata;
+import android.media.session.MediaSession;
+import android.media.session.PlaybackState;
 import android.os.Build;
+import android.os.Handler;
 import android.os.IBinder;
+import android.os.Looper;
 import android.os.PowerManager;
+
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URL;
 
 /**
  * Foreground service that runs while music plays.
- *  - shows a "now playing" notification with Previous / Pause / Next buttons (also on the lock screen)
+ *  - "now playing" notification with cover art and Previous / Play-Pause / Next buttons
+ *  - a media session, so the lock screen and the notification show a seek bar and headset buttons work
  *  - keeps the process (and the web view with the music) from being frozen when the screen is off
- *  - stops as soon as the music stops
  */
 public class AudioKeepAliveService extends Service {
   static volatile AudioKeepAliveService instance;
@@ -23,7 +34,17 @@ public class AudioKeepAliveService extends Service {
   private static final String ACT_PREV = "sx.prev";
   private static final String ACT_TOGGLE = "sx.toggle";
   private static final String ACT_NEXT = "sx.next";
+
+  private final Handler main = new Handler(Looper.getMainLooper());
   private PowerManager.WakeLock wakeLock;
+  private MediaSession session;
+  private String title = "";
+  private String artist = "";
+  private String artRequested = "";
+  private Bitmap art;
+  private boolean playing = true;
+  private long durMs = 0;
+  private long posMs = 0;
 
   @Override
   public void onCreate() {
@@ -37,6 +58,21 @@ public class AudioKeepAliveService extends Service {
         wakeLock.acquire(6L * 60 * 60 * 1000); // safety limit: 6 hours
       }
     } catch (Exception ignored) { }
+    try {
+      session = new MediaSession(this, "sarmaxstream");
+      session.setCallback(new MediaSession.Callback() {
+        @Override public void onPlay() { MainActivity.callJs("window.__sxMedia && window.__sxMedia('play')"); }
+        @Override public void onPause() { MainActivity.callJs("window.__sxMedia && window.__sxMedia('pause')"); }
+        @Override public void onSkipToNext() { MainActivity.callJs("window.__sxMedia && window.__sxMedia('next')"); }
+        @Override public void onSkipToPrevious() { MainActivity.callJs("window.__sxMedia && window.__sxMedia('prev')"); }
+        @Override public void onSeekTo(long pos) {
+          MainActivity.callJs("window.__sxMedia && window.__sxMedia('seek:" + (pos / 1000.0) + "')");
+        }
+      });
+      session.setActive(true);
+    } catch (Exception e) {
+      session = null;
+    }
   }
 
   @Override
@@ -48,10 +84,61 @@ public class AudioKeepAliveService extends Service {
       MainActivity.callJs("window.__sxMedia && window.__sxMedia('" + cmd + "')");
       return START_NOT_STICKY;
     }
-    String title = intent != null ? intent.getStringExtra("title") : null;
-    String artist = intent != null ? intent.getStringExtra("artist") : null;
-    show(title, artist);
+    if (intent != null) {
+      update(intent.getStringExtra("title"), intent.getStringExtra("artist"), intent.getStringExtra("art"),
+          intent.getBooleanExtra("playing", true), intent.getLongExtra("dur", 0), intent.getLongExtra("pos", 0));
+    } else {
+      update("", "", "", true, 0, 0);
+    }
     return START_NOT_STICKY;
+  }
+
+  /** Called from the web page (through MainActivity) whenever the song, play state or position changes. */
+  void update(final String t, final String a, final String artUrl, final boolean isPlaying, final long dur, final long pos) {
+    main.post(new Runnable() {
+      @Override public void run() {
+        title = t != null ? t : "";
+        artist = a != null ? a : "";
+        playing = isPlaying;
+        durMs = Math.max(0, dur);
+        posMs = Math.max(0, pos);
+        loadArt(artUrl);
+        publish();
+      }
+    });
+  }
+
+  private void loadArt(final String url) {
+    if (url == null || url.isEmpty()) { artRequested = ""; art = null; return; }
+    if (url.equals(artRequested)) return;
+    if (!url.startsWith("https://")) return;
+    artRequested = url;
+    art = null;
+    new Thread(new Runnable() {
+      @Override public void run() {
+        Bitmap b = null;
+        try {
+          HttpURLConnection c = (HttpURLConnection) new URL(url).openConnection();
+          c.setConnectTimeout(6000);
+          c.setReadTimeout(8000);
+          InputStream in = c.getInputStream();
+          b = BitmapFactory.decodeStream(in);
+          in.close();
+          if (b != null && (b.getWidth() > 600 || b.getHeight() > 600)) {
+            float k = 600f / Math.max(b.getWidth(), b.getHeight());
+            b = Bitmap.createScaledBitmap(b, Math.max(1, Math.round(b.getWidth() * k)), Math.max(1, Math.round(b.getHeight() * k)), true);
+          }
+        } catch (Exception ignored) { }
+        final Bitmap fb = b;
+        if (fb != null) {
+          main.post(new Runnable() {
+            @Override public void run() {
+              if (url.equals(artRequested)) { art = fb; publish(); }
+            }
+          });
+        }
+      }
+    }).start();
   }
 
   private PendingIntent button(String action, int code) {
@@ -61,7 +148,25 @@ public class AudioKeepAliveService extends Service {
   }
 
   @SuppressWarnings("deprecation")
-  void show(String title, String artist) {
+  private void publish() {
+    // lock screen / system media controls (cover, title, seek bar)
+    if (session != null) {
+      try {
+        MediaMetadata.Builder mb = new MediaMetadata.Builder()
+            .putString(MediaMetadata.METADATA_KEY_TITLE, title)
+            .putString(MediaMetadata.METADATA_KEY_ARTIST, artist)
+            .putLong(MediaMetadata.METADATA_KEY_DURATION, durMs);
+        if (art != null) mb.putBitmap(MediaMetadata.METADATA_KEY_ALBUM_ART, art);
+        session.setMetadata(mb.build());
+        long actions = PlaybackState.ACTION_PLAY | PlaybackState.ACTION_PAUSE | PlaybackState.ACTION_PLAY_PAUSE
+            | PlaybackState.ACTION_SKIP_TO_NEXT | PlaybackState.ACTION_SKIP_TO_PREVIOUS | PlaybackState.ACTION_SEEK_TO;
+        session.setPlaybackState(new PlaybackState.Builder()
+            .setActions(actions)
+            .setState(playing ? PlaybackState.STATE_PLAYING : PlaybackState.STATE_PAUSED, posMs, playing ? 1f : 0f)
+            .build());
+      } catch (Exception ignored) { }
+    }
+
     if (Build.VERSION.SDK_INT >= 26) {
       NotificationChannel ch = new NotificationChannel(CHANNEL, "Music playing", NotificationManager.IMPORTANCE_LOW);
       ch.setShowBadge(false);
@@ -76,17 +181,21 @@ public class AudioKeepAliveService extends Service {
         ? new Notification.Builder(this, CHANNEL)
         : new Notification.Builder(this);
     b.setSmallIcon(android.R.drawable.ic_media_play)
-        .setContentTitle(title != null && !title.isEmpty() ? title : "Sarmaxstream")
-        .setContentText(artist != null && !artist.isEmpty() ? artist : "Playing in the background")
+        .setContentTitle(!title.isEmpty() ? title : "Sarmaxstream")
+        .setContentText(!artist.isEmpty() ? artist : "Playing in the background")
         .setContentIntent(pi)
-        .setOngoing(true)
+        .setOngoing(playing)
         .setOnlyAlertOnce(true)
         .setCategory(Notification.CATEGORY_TRANSPORT)
         .setVisibility(Notification.VISIBILITY_PUBLIC)
         .addAction(android.R.drawable.ic_media_previous, "Previous", button(ACT_PREV, 1))
-        .addAction(android.R.drawable.ic_media_pause, "Pause", button(ACT_TOGGLE, 2))
-        .addAction(android.R.drawable.ic_media_next, "Next", button(ACT_NEXT, 3))
-        .setStyle(new Notification.MediaStyle().setShowActionsInCompactView(0, 1, 2));
+        .addAction(playing ? android.R.drawable.ic_media_pause : android.R.drawable.ic_media_play,
+            playing ? "Pause" : "Play", button(ACT_TOGGLE, 2))
+        .addAction(android.R.drawable.ic_media_next, "Next", button(ACT_NEXT, 3));
+    if (art != null) b.setLargeIcon(art);
+    Notification.MediaStyle style = new Notification.MediaStyle().setShowActionsInCompactView(0, 1, 2);
+    if (session != null) style.setMediaSession(session.getSessionToken());
+    b.setStyle(style);
     Notification n = b.build();
 
     if (Build.VERSION.SDK_INT >= 29) {
@@ -99,6 +208,7 @@ public class AudioKeepAliveService extends Service {
   @Override
   public void onDestroy() {
     instance = null;
+    try { if (session != null) { session.setActive(false); session.release(); } } catch (Exception ignored) { }
     try { if (wakeLock != null && wakeLock.isHeld()) wakeLock.release(); } catch (Exception ignored) { }
     super.onDestroy();
   }

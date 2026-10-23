@@ -45,8 +45,9 @@ jobs:
           mkdir -p "$DIR"
           cp MainActivity.java "$DIR/MainActivity.java"
           cp AudioKeepAliveService.java "$DIR/AudioKeepAliveService.java"
+          cp SxWidgetProvider.java "$DIR/SxWidgetProvider.java"
           python3 patch_android.py android
-          grep -n "AudioKeepAliveService\|FOREGROUND_SERVICE" android/app/src/main/AndroidManifest.xml
+          grep -n "AudioKeepAliveService\|SxWidgetProvider\|FOREGROUND_SERVICE" android/app/src/main/AndroidManifest.xml
 
       - name: Icon and splash screen
         run: |

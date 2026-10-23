@@ -441,6 +441,7 @@ export function PlayerProvider({ children }) {
   const seek = useCallback((sec) => {
     if (eng() && eng().seekTo) {
       try { eng().seekTo(sec, true); setCurrentTime(sec); } catch {}
+      setTimeout(() => { try { if (window.__sxSync) window.__sxSync(); } catch { /* ignore */ } }, 400); // update the notification seek bar
     }
   }, []);
 
@@ -480,16 +481,36 @@ export function PlayerProvider({ children }) {
   // Tell the Android app when music is playing, so it can keep the sound going in the background.
   // (Stopping is delayed a few seconds so the gap between two songs does not end the background mode.)
   const stopNativeTimer = useRef(0);
+  const timeRef = useRef(0);
+  timeRef.current = currentTime;
+  const durRef = useRef(0);
+  durRef.current = duration;
+  const playingRef = useRef(false);
+  playingRef.current = isPlaying;
+  // sends song, cover, play state and position to the Android notification / lock screen / widget
+  const syncNative = useCallback(() => {
+    const n = typeof window !== 'undefined' ? window.SxNative : null;
+    const cur = currentRef.current;
+    if (!n || !cur) return;
+    try {
+      const art = cur.thumbnail ? new URL(cur.thumbnail, window.location.origin).href : '';
+      if (n.setMedia) {
+        n.setMedia(!!playingRef.current, cur.title || '', cur.artist || '', art,
+          Math.round((durRef.current || 0) * 1000), Math.round((timeRef.current || 0) * 1000));
+      } else if (playingRef.current && n.setPlaying) {
+        n.setPlaying(true, cur.title || '', cur.artist || '');
+      }
+    } catch { /* ignore */ }
+  }, []);
   useEffect(() => {
     const n = typeof window !== 'undefined' ? window.SxNative : null;
-    if (!n || !n.setPlaying) return undefined;
+    if (!n) return undefined;
     clearTimeout(stopNativeTimer.current);
-    try {
-      if (isPlaying) n.setPlaying(true, (current && current.title) || '', (current && current.artist) || '');
-      else stopNativeTimer.current = setTimeout(() => { try { n.setPlaying(false, '', ''); } catch { /* ignore */ } }, 8000);
-    } catch { /* ignore */ }
+    syncNative();
+    // paused for a while: let Android stop the background service
+    if (!isPlaying && n.setPlaying) stopNativeTimer.current = setTimeout(() => { try { n.setPlaying(false, '', ''); } catch { /* ignore */ } }, 90000);
     return () => clearTimeout(stopNativeTimer.current);
-  }, [isPlaying, current]);
+  }, [isPlaying, current, duration, syncNative]);
 
   // Previous / Pause / Next buttons of the Android notification call this.
   useEffect(() => {
@@ -497,9 +518,16 @@ export function PlayerProvider({ children }) {
       if (cmd === 'next') next();
       else if (cmd === 'prev') prev();
       else if (cmd === 'toggle') togglePlay();
+      else if (cmd === 'play') { try { if (eng() && eng().playVideo) eng().playVideo(); } catch { /* ignore */ } }
+      else if (cmd === 'pause') { try { if (eng() && eng().pauseVideo) eng().pauseVideo(); } catch { /* ignore */ } }
+      else if (typeof cmd === 'string' && cmd.indexOf('seek:') === 0) {
+        const sec = parseFloat(cmd.slice(5));
+        if (Number.isFinite(sec)) seek(sec);
+      }
     };
-    return () => { delete window.__sxMedia; };
-  }, [next, prev, togglePlay]);
+    window.__sxSync = syncNative;
+    return () => { delete window.__sxMedia; delete window.__sxSync; };
+  }, [next, prev, togglePlay, seek, syncNative]);
 
   useEffect(() => {
     if (typeof navigator === 'undefined' || !navigator.mediaSession) return;

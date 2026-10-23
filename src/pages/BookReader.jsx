@@ -8,6 +8,7 @@ import {
 import { idbGet, idbSet, idbDel } from '@/lib/cache';
 import { isNative } from '@/lib/native';
 import { pushBackHandler } from '@/lib/backStack';
+import { canSaveToPhone, saveTextToPhone } from '@/lib/nativeFiles';
 
 /* ---------------------------------------------------------------------------
    Light-weight reader.
@@ -80,6 +81,7 @@ export default function BookReader() {
   const [saved, setSaved] = useState(false);
   const [downloaded, setDownloaded] = useState(false);
   const [dlBusy, setDlBusy] = useState(false);
+  const [fileMsg, setFileMsg] = useState('');
   const [idx, setIdx] = useState(0);
   const [bars, setBars] = useState(true);
   const [panel, setPanel] = useState(null); // 'toc' | 'settings' | null
@@ -266,6 +268,17 @@ export default function BookReader() {
     } finally { setDlBusy(false); }
   };
 
+  // Android app: save the whole book as a .txt file in Download/Sarmaxstream
+  const saveAsFile = async () => {
+    if (!book || !rawText) return;
+    setFileMsg('Saving…');
+    const name = ((book.title || `book-${id}`).replace(/[\\/:*?"<>|]/g, '').trim().slice(0, 100) || `book-${id}`) + '.txt';
+    const header = `${book.title || ''}\n${book.author || ''}\n\n`;
+    const where = await saveTextToPhone(header + rawText, name).catch(() => null);
+    setFileMsg(where ? `Saved to ${where}` : 'Could not save the file');
+    setTimeout(() => setFileMsg(''), 5000);
+  };
+
   const sec = sections[idx];
   const pct = N > 1 ? Math.round((idx / (N - 1)) * 100) : 0;
   const currentChapter = useMemo(() => {
@@ -437,6 +450,11 @@ export default function BookReader() {
               </div>
             </div>
           </div>
+          {canSaveToPhone() && (
+            <button onClick={saveAsFile} className="w-full h-10 rounded-xl text-sm" style={chip(false)}>
+              {fileMsg || 'Save this book as a file (.txt)'}
+            </button>
+          )}
         </div>
       )}
 

@@ -34,6 +34,8 @@ export const DEFAULTS = {
   contentLanguage: 'en-US',   // sent to TMDB as ?language=
   saveSearchHistory: true,
   shortcuts: true,            // keyboard shortcuts in the music player
+  saveToPhone: true,          // Android app: also save downloaded songs as real files
+  appLock: false,             // Android app: ask for fingerprint / screen lock when opening
 };
 
 let state = read();
