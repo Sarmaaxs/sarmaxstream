@@ -15,13 +15,15 @@ const RAILWAY_COBALT = 'https://cobalt-tools-production-0cd6.up.railway.app';
 const YT_ID = /^[A-Za-z0-9_-]{11}$/;
 const MIN_BYTES = 1024;
 
+const YT_HOSTS = new Set(['youtube.com', 'www.youtube.com', 'm.youtube.com', 'music.youtube.com', 'youtu.be']);
+
 function buildYoutubeUrl(idOrUrl) {
   const s = String(idOrUrl || '').trim();
   if (!s) return null;
   if (YT_ID.test(s)) return `https://www.youtube.com/watch?v=${s}`;
   try {
     const u = new URL(s);
-    if (u.hostname.includes('youtu')) return s;
+    if (u.protocol === 'https:' && YT_HOSTS.has(u.hostname.toLowerCase())) return u.toString();
   } catch {}
   return null;
 }
@@ -83,6 +85,11 @@ async function openTunnel(youtubeUrl, key, opt, wantStream) {
     return { ok: false, status: c.status, error: String(err || `cobalt ${c.status}`) };
   }
   const { fileUrl, filename } = pickFile(c.data);
+  if (fileUrl) {
+    let okUrl = false;
+    try { okUrl = new URL(fileUrl).protocol === 'https:'; } catch { /* bad url */ }
+    if (!okUrl) return { ok: false, error: 'cobalt returned a non-https file url' };
+  }
   if (!fileUrl) return { ok: false, error: `no file url from cobalt (status=${c.data.status})` };
   if (!wantStream) return { ok: true, data: c.data, fileUrl, filename };
 
@@ -177,7 +184,7 @@ export default async function handler(req, res) {
       res.setHeader('Content-Type', t.ct);
       res.setHeader(
         'Content-Disposition',
-        `attachment; filename="${String(t.filename).replace(/"/g, '')}"`
+        `attachment; filename="${String(t.filename).replace(/["\r\n]/g, '')}"`
       );
       res.statusCode = 200;
       res.write(Buffer.from(t.first));

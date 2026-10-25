@@ -1,6 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
-// base44 removed — using fetch to /api/searchMusic instead
 import { usePlayer } from '@/lib/PlayerContext';
 import { cachedJson } from '@/lib/cache';
 import { Search, Play, X } from 'lucide-react';

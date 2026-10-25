@@ -11,8 +11,7 @@ export default function PlaylistView() {
   const player = usePlayer();
 
   // useMusicLibrary already loads every playlist (with its tracks) via
-  // Supabase on mount, so no separate fetch-by-id call is needed here —
-  // this replaces the old base44.entities.Playlist.get(id) round trip.
+  // Supabase on mount, so no separate fetch-by-id call is needed here.
   const playlist = lib.playlists.find((p) => p.id === id) || null;
   const loading = lib.loading;
 

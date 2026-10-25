@@ -4,14 +4,14 @@
    - Images / fonts         : saved as you browse, shown instantly next time
    - Some /api GET answers  : network first, saved copy when offline
    Streams, downloads and third-party video players are never touched. */
-const V = 'v1';
+const V = 'v2';
 const SHELL = `sx-shell-${V}`;
 const ASSETS = `sx-assets-${V}`;
 const IMAGES = `sx-images-${V}`;
 const API = `sx-api-${V}`;
 const KEEP = [SHELL, ASSETS, IMAGES, API];
-const API_OK = /^\/api\/(searchMusic|searchBooks|jikan|health)/;
-const MAX_IMAGES = 400;
+const API_OK = /^\/api\/(searchMusic|searchBooks|jikan)/;
+const MAX_IMAGES = 60; // opaque images count ~7 MB of quota each
 
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {

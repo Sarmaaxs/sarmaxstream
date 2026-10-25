@@ -1,6 +1,5 @@
 import { cachedJson } from '@/lib/cache';
 import React, { useEffect, useState } from 'react';
-// base44 removed — using fetch to /api/searchMusic instead
 
 export default function PosterMarquee() {
   const [imgs, setImgs] = useState([]);

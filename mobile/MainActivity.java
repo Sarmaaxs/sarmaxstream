@@ -62,6 +62,38 @@ import java.util.HashMap;
  */
 public class MainActivity extends BridgeActivity {
   private static final String[] OWN_HOSTS = { "sarmaxstreams.vercel.app", "localhost" };
+  // Per-launch secret for the JS bridge. Only our own pages receive it (see onPageFinished),
+  // so a third-party video iframe that finds the raw bridge still cannot call anything on it.
+  private static final String BRIDGE_TOKEN = newBridgeToken();
+
+  private static String newBridgeToken() {
+    byte[] b = new byte[16];
+    new java.security.SecureRandom().nextBytes(b);
+    StringBuilder sb = new StringBuilder();
+    for (byte x : b) sb.append(String.format("%02x", x));
+    return sb.toString();
+  }
+
+  private static boolean tokOk(String t) {
+    return t != null && java.security.MessageDigest.isEqual(BRIDGE_TOKEN.getBytes(), t.getBytes());
+  }
+
+  // Ad scripts love intent: / market: links that jump out to Play Store or another app.
+  private static boolean isBlockedScheme(String s) {
+    if (s == null) return false;
+    s = s.toLowerCase(java.util.Locale.ROOT);
+    return "intent".equals(s) || "market".equals(s) || "android-app".equals(s);
+  }
+
+  // The only outside links we open on purpose (a real tap on the Telegram support link).
+  private static boolean isOpenExternally(String host) {
+    return "t.me".equals(host) || "telegram.me".equals(host);
+  }
+
+  private void openExternal(Uri u) {
+    try { startActivity(new Intent(Intent.ACTION_VIEW, u)); } catch (Exception ignored) { }
+  }
+
   private static final long RESTORE_MAX_AGE = 7L * 24 * 60 * 60 * 1000;
   private static final long LOCK_AFTER_MS = 30L * 1000;
   private static final int REQ_UNLOCK = 4711;
@@ -238,7 +270,8 @@ public class MainActivity extends BridgeActivity {
   /** window.SxNative in the web page. */
   private class SxNative {
     @JavascriptInterface
-    public void keepScreenOn(final boolean on) {
+    public void keepScreenOn(String tok, final boolean on) {
+      if (!tokOk(tok)) return;
       MainActivity.this.runOnUiThread(new Runnable() {
         @Override public void run() {
           if (on) MainActivity.this.getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -249,7 +282,8 @@ public class MainActivity extends BridgeActivity {
 
     /** Song, play state and position changed: update notification, lock screen and widget. */
     @JavascriptInterface
-    public void setMedia(boolean isPlaying, String title, String artist, String art, long durMs, long posMs) {
+    public void setMedia(String tok, boolean isPlaying, String title, String artist, String art, long durMs, long posMs) {
+      if (!tokOk(tok)) return;
       keepAlive = isPlaying;
       try {
         String np = (title == null ? "" : title) + (artist != null && !artist.isEmpty() ? " \u2014 " + artist : "");
@@ -273,11 +307,12 @@ public class MainActivity extends BridgeActivity {
 
     /** Older web versions: only play / stop. */
     @JavascriptInterface
-    public void setPlaying(boolean playing, String title, String artist) {
+    public void setPlaying(String tok, boolean playing, String title, String artist) {
+      if (!tokOk(tok)) return;
       keepAlive = playing;
       try {
         if (playing) {
-          setMedia(true, title, artist, "", 0, 0);
+          setMedia(tok, true, title, artist, "", 0, 0);
         } else {
           stopService(new Intent(MainActivity.this, AudioKeepAliveService.class));
         }
@@ -287,7 +322,8 @@ public class MainActivity extends BridgeActivity {
     // ----- saving real files (Music / Download folders) -----
 
     @JavascriptInterface
-    public synchronized int beginFile(String name, String mime, String kind) {
+    public synchronized int beginFile(String tok, String name, String mime, String kind) {
+      if (!tokOk(tok)) return -1;
       try {
         String safe = (name == null || name.isEmpty() ? "file" : name).replaceAll("[\\\\/:*?\"<>|]", "_");
         SxFile f = new SxFile();
@@ -327,7 +363,8 @@ public class MainActivity extends BridgeActivity {
     }
 
     @JavascriptInterface
-    public synchronized boolean appendFile(int id, String base64) {
+    public synchronized boolean appendFile(String tok, int id, String base64) {
+      if (!tokOk(tok)) return false;
       SxFile f = openFiles.get(id);
       if (f == null) return false;
       try {
@@ -340,7 +377,8 @@ public class MainActivity extends BridgeActivity {
 
     /** Finishes the file. Returns the folder it was saved in, or "" if it failed. */
     @JavascriptInterface
-    public synchronized String endFile(int id, boolean ok) {
+    public synchronized String endFile(String tok, int id, boolean ok) {
+      if (!tokOk(tok)) return "";
       SxFile f = openFiles.remove(id);
       if (f == null) return "";
       try { f.os.close(); } catch (Exception ignored) { ok = false; }
@@ -362,7 +400,8 @@ public class MainActivity extends BridgeActivity {
     // ----- app lock -----
 
     @JavascriptInterface
-    public boolean setAppLock(final boolean on) {
+    public boolean setAppLock(String tok, final boolean on) {
+      if (!tokOk(tok)) return false;
       if (on && !deviceSecure()) return false; // the phone has no PIN / pattern / fingerprint yet
       prefs().edit().putBoolean("applock", on).apply();
       MainActivity.this.runOnUiThread(new Runnable() {
@@ -375,12 +414,14 @@ public class MainActivity extends BridgeActivity {
     }
 
     @JavascriptInterface
-    public boolean isAppLockEnabled() { return lockEnabled(); }
+    public boolean isAppLockEnabled(String tok) {
+      if (!tokOk(tok)) return false; return lockEnabled(); }
 
     // ----- share sheet -----
 
     @JavascriptInterface
-    public void share(final String text) {
+    public void share(String tok, final String text) {
+      if (!tokOk(tok)) return;
       MainActivity.this.runOnUiThread(new Runnable() {
         @Override public void run() {
           try {
@@ -420,7 +461,7 @@ public class MainActivity extends BridgeActivity {
       if (d != null && isOwnUrl(d.toString())) pendingIntentUrl = d.toString();
     } catch (Exception ignored) { }
 
-    webView.addJavascriptInterface(new SxNative(), "SxNative");
+    webView.addJavascriptInterface(new SxNative(), "SxRaw"); // wrapped by src/lib/nativeBridge.js
 
     // real full-screen for video players (the default web view cannot do it)
     webView.setWebChromeClient(new BridgeWebChromeClient(getBridge()) {
@@ -437,7 +478,9 @@ public class MainActivity extends BridgeActivity {
         Uri u = request.getUrl();
         String scheme = u.getScheme();
         boolean isHttp = "http".equals(scheme) || "https".equals(scheme);
+        if (request.isForMainFrame() && isBlockedScheme(scheme)) return true;
         if (isHttp && request.isForMainFrame() && !isOwnHost(u.getHost())) {
+          if (Build.VERSION.SDK_INT >= 24 && request.hasGesture() && isOpenExternally(u.getHost())) openExternal(u);
           return true; // swallow: do nothing (no Chrome, no new tab)
         }
         return super.shouldOverrideUrlLoading(view, request);
@@ -449,6 +492,7 @@ public class MainActivity extends BridgeActivity {
         Uri u = Uri.parse(url);
         String scheme = u.getScheme();
         boolean isHttp = "http".equals(scheme) || "https".equals(scheme);
+        if (isBlockedScheme(scheme)) return true;
         if (isHttp && !isOwnHost(u.getHost())) return true;
         return super.shouldOverrideUrlLoading(view, url);
       }
@@ -456,6 +500,8 @@ public class MainActivity extends BridgeActivity {
       @Override
       public void onPageFinished(WebView view, String url) {
         super.onPageFinished(view, url);
+        // hand the bridge token to OUR pages only (evaluateJavascript runs in the main frame, never in iframes)
+        if (url != null && isOwnUrl(url)) view.evaluateJavascript("window.__sxTok='" + BRIDGE_TOKEN + "';", null);
         if (pendingIntentUrl != null && url != null && isOwnUrl(url)) {
           String target = pendingIntentUrl;
           pendingIntentUrl = null;

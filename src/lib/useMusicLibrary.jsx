@@ -148,8 +148,3 @@ export function useMusicLibrary() {
   };
 }
 
-// NOTE on AuthContext: your Base44 AuthContext.jsx exposed
-// `base44.auth.redirectToLogin(...)`. Reuse Sarmaxstream's AuthContext.jsx
-// as-is (it's already Supabase-based) — it exposes `user` and a login
-// redirect helper, which is exactly what this file expects. Don't write a
-// third auth system; one Supabase auth context for both apps.

@@ -1,15 +1,13 @@
-// api/searchMusic.js — REPLACES base44/functions/searchMusic/entry.ts
-// Deploy target: Vercel serverless function (drop straight in /api on Vercel)
-// or Railway/Express (wrap the handler in an app.post route — same body).
+// api/searchMusic.js — song, artist and chart search.
 //
 // Env var needed: YOUTUBE_API_KEY  (set in Vercel/Railway project settings,
 // NOT in a committed .env file).
 //
-// Call it the same way you called base44.functions.invoke('searchMusic', body):
+// Call it with:
 //   fetch('/api/searchMusic', { method: 'POST', body: JSON.stringify(body) })
 //
-// NEW vs. the Base44 version:
-//   - Shorts filter fix (see searchMusic-shorts-fix.md for the isolated diff)
+// Notes:
+//   - Shorts are filtered out
 //   - "Real results" verification: for mode:'search', cross-checks results
 //     against Apple's free iTunes Search API (no key required) to confirm
 //     the track actually exists as a released song, not just a YouTube
@@ -502,7 +500,7 @@ export default async function handler(req, res) {
     }
     const payload = { tracks, artist: null, nextPageToken: '' };
     if (tracks.length) resultCache.set(skey, payload);
-    return res.status(200).json(body.debug ? { ...payload, diag } : payload);
+    return res.status(200).json(body.debug && process.env.ALLOW_DEBUG === '1' ? { ...payload, diag } : payload);
   }
 
   if (!CACHEABLE.has(mode)) {

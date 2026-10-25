@@ -1,7 +1,6 @@
 import { cachedJson } from '@/lib/cache';
 import React, { useEffect, useState } from 'react';
 import { useParams } from 'react-router-dom';
-// base44 removed — using fetch to /api/searchMusic instead
 import SearchBar from '@/components/SearchBar';
 import TrackGrid from '@/components/TrackGrid';
 import { useMusicLibrary } from '@/lib/useMusicLibrary';

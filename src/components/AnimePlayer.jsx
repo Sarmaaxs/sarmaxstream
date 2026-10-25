@@ -13,11 +13,14 @@ const SAFE_KEY = "sarmaxstream:anime-popup-block";
 // most of it hits the browser's native popup blocker or an ad blocker anyway),
 // but leaves out allow-top-navigation, so the player can NEVER redirect your
 // whole page away. That's the one thing this sandbox guarantees.
-const SANDBOX = "allow-scripts allow-same-origin allow-forms allow-presentation allow-popups allow-popups-to-escape-sandbox";
+const SANDBOX = "allow-scripts allow-same-origin allow-forms allow-presentation allow-popups";
 
 const IS_MOBILE = typeof navigator !== "undefined" && /Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
 
+const SHIELDED = typeof navigator !== "undefined" && /SxShield/.test(navigator.userAgent);
+
 function readSafe() {
+  if (SHIELDED) return false; // the Android app swallows pop-ups itself, so embeds get no sandbox
   try {
     const v = localStorage.getItem(SAFE_KEY);
     if (v) return v === "on";
@@ -175,6 +178,7 @@ export default function AnimePlayer({
         <button
           type="button"
           onClick={toggleSafe}
+          hidden={SHIELDED}
           aria-pressed={safe}
           title="Stops the page itself from being redirected. New-tab pop-ups may still slip through; a browser ad blocker like uBlock Origin catches most of those."
           className={`shrink-0 h-8 px-4 rounded-full text-xs font-semibold border transition ${

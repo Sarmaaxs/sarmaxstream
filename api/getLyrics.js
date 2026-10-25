@@ -1,5 +1,4 @@
-// api/getLyrics.js — REPLACES base44/functions/getLyrics/entry.ts
-// Deploy target: same as searchMusic.js (Vercel serverless / Railway+Express).
+// api/getLyrics.js — lyrics lookup.
 // Sources: LRCLIB (many lookups at once), NetEase (second synced source), lyrics.ovh (written only).
 // No env vars needed; none of them require a key.
 
