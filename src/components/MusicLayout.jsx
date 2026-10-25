@@ -17,7 +17,7 @@ export default function MusicLayout() {
       videoId: v,
       title: params.get('t') || '',
       artist: params.get('a') || '',
-      thumbnail: /^(aud|jam)_|^(dz|it)_\d+$/.test(v) ? '' : 'https://i.ytimg.com/vi/' + v + '/mqdefault.jpg',
+      thumbnail: /^(aud|jam|ia|ov)_|^(dz|it)_\d+$/.test(v) ? '' : 'https://i.ytimg.com/vi/' + v + '/mqdefault.jpg',
     };
     player.cueTrack(track);
   }, [params, player.isReady]);

@@ -32,7 +32,7 @@ export default function TrackList({ tracks, savedIds, playlists, onToggleSave, o
             </button>
             <div className="min-w-0 flex-1">
               <div className={`truncate text-sm font-medium ${playing ? 'text-primary' : 'text-white'}`}>{t.title}</div>
-              <div className="truncate text-xs text-white/50">{t.artist}</div>
+              <div className="truncate text-xs text-white/50">{t.artist}{t.license ? <span className="text-white/30"> · {t.license}</span> : null}</div>
             </div>
             <div className="hidden sm:block text-xs text-white/40 w-12 text-right">{parseDur(t.duration)}</div>
             {onAddToPlaylist && (

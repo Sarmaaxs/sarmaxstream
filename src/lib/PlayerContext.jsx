@@ -19,7 +19,7 @@ function loadSaved() {
 
 // Tracks from Audius / Jamendo have ids like "aud_xxx" / "jam_123" and stream through /api/stream.
 // Everything else is a YouTube video id.
-const isAudioId = (id) => typeof id === 'string' && (id.startsWith('aud_') || id.startsWith('jam_'));
+const isAudioId = (id) => typeof id === 'string' && /^(aud|jam|ia|ov)_/.test(id);
 // Catalog ids (Deezer / iTunes) have no audio yet; /api/resolve finds one when you press play.
 const isCatalogId = (id) => typeof id === 'string' && /^(dz|it)_\d+$/.test(id);
 const parseDur = (iso) => { const m = /^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/.exec(iso || ''); return m ? (+m[1] || 0) * 3600 + (+m[2] || 0) * 60 + (+m[3] || 0) : 0; };

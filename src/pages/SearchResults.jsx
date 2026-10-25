@@ -37,18 +37,23 @@ export default function SearchResults() {
   const [artists, setArtists] = useState([]);
   const [loading, setLoading] = useState(true);
   const [why, setWhy] = useState(null);
+  const [free, setFree] = useState([]);
 
   useEffect(() => {
-    if (!q) { setTracks([]); setArtists([]); setLoading(false); return undefined; }
+    if (!q) { setTracks([]); setArtists([]); setFree([]); setLoading(false); return undefined; }
     let active = true;
     setLoading(true);
     saveRecentSearch(q);
     (async () => {
       // Songs are the main result; artists are a small extra row, and only real ones.
-      const songs = await post({ query: q, mode: 'search', maxResults: 25 }).catch(() => ({}));
+      const [songs, fr] = await Promise.all([
+        post({ query: q, mode: 'search', maxResults: 25 }).catch(() => ({})),
+        post({ query: q, mode: 'free', maxResults: 12 }).catch(() => ({})),
+      ]);
       const arts = {};
       if (!active) return;
       setTracks(songs.tracks || []);
+      setFree(fr.tracks || []);
       setWhy((songs.tracks || []).length ? null : (songs.diag || (songs.error ? { error: songs.error } : null)));
       setArtists((arts.artists || []).slice(0, 6));
       setLoading(false);
@@ -77,6 +82,21 @@ export default function SearchResults() {
             onAddToPlaylist={lib.addToPlaylist}
             emptyText="No songs found. Try another search."
           />
+          {free.length > 0 && (
+            <section className="space-y-3">
+              <h2 className="text-lg font-semibold text-white/90">Free to download</h2>
+              <p className="text-xs text-white/40">Creative Commons and public-domain music. You can save these for offline listening; keep the credit if you reuse them.</p>
+              <TrackList
+                tracks={free}
+                savedIds={lib.savedIds}
+                playlists={lib.playlists}
+                onToggleSave={lib.toggleSave}
+                onCreatePlaylist={lib.createPlaylist}
+                onAddToPlaylist={lib.addToPlaylist}
+                emptyText=""
+              />
+            </section>
+          )}
           {DEBUG && !tracks.length && why && (
             <div className="text-xs text-white/40 space-y-0.5">
               {Object.entries(why).map(([k, v]) => <div key={k}>{k}: {String(v)}</div>)}

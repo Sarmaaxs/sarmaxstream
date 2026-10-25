@@ -483,6 +483,23 @@ export default async function handler(req, res) {
   if (channelId && !/^UC[\w-]{20,30}$/.test(channelId)) return res.status(400).json({ error: 'Bad channel id', tracks: [], artists: [] });
   if (pageToken && !/^[\w-]{1,200}$/.test(pageToken)) return res.status(400).json({ error: 'Bad page token', tracks: [], artists: [] });
 
+  // ---- FREE: only openly licensed music (Audius, Jamendo, Openverse, Internet Archive) ----
+  if (mode === 'free' && query && !pageToken) {
+    const fmax = Math.min(Number(body.maxResults) || 12, 30);
+    const fkey = JSON.stringify(['free1', query.toLowerCase(), fmax]);
+    const fhit = resultCache.get(fkey);
+    if (fhit) { res.setHeader('X-Cache', 'HIT'); return res.status(200).json(fhit); }
+    if (!rateLimit(req, res, { name: 'music', max: 40, windowMs: 60 * 1000 })) return undefined;
+    try {
+      const f = await searchFree(query, fmax);
+      const fpayload = { tracks: f.tracks, artist: null, nextPageToken: '' };
+      if (f.tracks.length) resultCache.set(fkey, fpayload);
+      return res.status(200).json(body.debug && process.env.ALLOW_DEBUG === '1' ? { ...fpayload, diag: f.diag } : fpayload);
+    } catch {
+      return res.status(200).json({ tracks: [], artist: null, nextPageToken: '' });
+    }
+  }
+
   // ---- SEARCH: free catalogs (Deezer / iTunes). No YouTube quota is spent on searching. ----
   // Playing a result is resolved later by /api/resolve: Audius -> Jamendo -> YouTube.
   if (mode === 'search' && query && !pageToken) {

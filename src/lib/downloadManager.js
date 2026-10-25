@@ -9,7 +9,7 @@ import { getPrefs } from '@/lib/prefs';
 import { downloadYoutubeOnDevice, deviceDownloadAvailable } from '@/lib/ytDevice';
 
 const YT_ID = /^[A-Za-z0-9_-]{11}$/;
-const isAudioId = (id) => typeof id === 'string' && (id.startsWith('aud_') || id.startsWith('jam_'));
+const isAudioId = (id) => typeof id === 'string' && /^(aud|jam|ia|ov)_/.test(id);
 
 /* ------------------------------ store ------------------------------ */
 let jobs = [];
@@ -167,6 +167,8 @@ function friendly(raw) {
   if (/empty file|empty\/invalid/i.test(m)) return 'The download server returned an empty file.';
   if (/no YouTube match|no source/i.test(m)) return 'No downloadable source found for this song.';
   if (/dropped|cut short|network/i.test(m)) return 'Connection dropped while downloading.';
+  if (/cobalt|tunnel|youtube/i.test(m))
+    return "This song can't be downloaded. Songs in the “Free to download” list can be saved.";
   return 'Download failed.';
 }
 

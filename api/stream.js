@@ -1,6 +1,7 @@
-// api/stream.js — GET /api/stream?id=aud_XXXX | jam_12345
+// api/stream.js — GET /api/stream?id=aud_XXXX | jam_12345 | ia_identifier | ov_uuid
 // Redirects the <audio> element to the real stream, so API keys stay on the server.
 import { rateLimit, makeCache } from './_guard.js';
+import { archiveFileUrl, openverseAudioUrl } from './_free.js';
 
 const cache = makeCache({ ttlMs: 10 * 60 * 1000, max: 500 });
 
@@ -17,7 +18,9 @@ export default async function handler(req, res) {
   const id = String((req.query && req.query.id) || '');
   const aud = /^aud_([A-Za-z0-9]{1,24})$/.exec(id);
   const jam = /^jam_(\d{1,10})$/.exec(id);
-  if (!aud && !jam) return res.status(400).json({ error: 'Bad id' });
+  const ia = /^ia_([A-Za-z0-9][A-Za-z0-9._-]{0,99})$/.exec(id);
+  const ov = /^ov_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/.exec(id);
+  if (!aud && !jam && !ia && !ov) return res.status(400).json({ error: 'Bad id' });
   if (!rateLimit(req, res, { name: 'stream', max: 120, windowMs: 60 * 1000 })) return undefined;
 
   let target = cache.get(id);
@@ -26,6 +29,9 @@ export default async function handler(req, res) {
       // Audius streaming is public; the key is optional.
       const key = process.env.AUDIUS_API_KEY;
       target = `https://api.audius.co/v1/tracks/${aud[1]}/stream?app_name=sarmaxstream${key ? `&api_key=${encodeURIComponent(key)}` : ''}`;
+    } else if (ia || ov) {
+      target = ia ? await archiveFileUrl(ia[1]) : await openverseAudioUrl(ov[1]);
+      if (!target) return res.status(404).json({ error: 'Track not found or not openly licensed' });
     } else {
       const cid = process.env.JAMENDO_CLIENT_ID;
       if (!cid) return res.status(500).json({ error: 'Jamendo not configured' });
