@@ -218,7 +218,7 @@ async function inner(req, res) {
     const maxResults = Math.min(Number(body.maxResults) || 24, 50);
     const channelId = body.channelId || '';
     const apiKey = process.env.YOUTUBE_API_KEY;
-    if (!apiKey) return res.status(500).json({ error: 'YouTube API key not configured' });
+    if (!apiKey && mode !== 'chart') return res.status(500).json({ error: 'YouTube API key not configured' });
 
     // "Famous Songs" home section: merge a couple of regions' music charts so
     // it isn't just one country's algorithmic trending list. Cheap: 1 quota
@@ -256,57 +256,32 @@ async function inner(req, res) {
       return res.status(200).json({ tracks, artist: null, nextPageToken: '' });
     }
 
-    // Real Billboard Hot 100 list, resolved to actual YouTube videos.
+    // Chart: Deezer's free global chart. Spends no YouTube quota.
+    // A song is only resolved to a playable source when you press play (/api/resolve).
     if (mode === 'chart') {
       if (chartCache.tracks.length && Date.now() - chartCache.ts < CHART_CACHE_MS) {
         res.setHeader('Cache-Control', CHART_CDN_HEADER);
         return res.status(200).json({ tracks: chartCache.tracks, artist: null, nextPageToken: '' });
       }
-      let firstError = '';
-      const resolved = await Promise.all(FAMOUS_CHART.map(async ({ title, artist }) => {
-        try {
-          const q = `${artist} ${title}`;
-          const sres = await fetch(`https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&videoCategoryId=10&q=${encodeURIComponent(q)}&maxResults=1&key=${apiKey}`);
-          const sdata = await sres.json();
-          if (!sres.ok) {
-            if (!firstError) firstError = sdata.error?.message || `YouTube API error ${sres.status}`;
-            return null;
-          }
-          const item = sdata.items?.[0];
-          if (!item?.id?.videoId) return null;
-          return {
-            videoId: item.id.videoId,
-            title,
-            artist,
-            thumbnail: item.snippet?.thumbnails?.medium?.url || item.snippet?.thumbnails?.default?.url || '',
-            duration: '',
-          };
-        } catch (e) {
-          if (!firstError) firstError = e.message || 'Request failed';
-          return null;
-        }
-      }));
-      const seenIds = new Set();
-      let tracks = resolved.filter((t) => t && !seenIds.has(t.videoId) && seenIds.add(t.videoId));
-
-      if (tracks.length === 0) {
+      const d = await fetch('https://api.deezer.com/chart/0/tracks?limit=50')
+        .then((r) => (r.ok ? r.json() : null))
+        .catch(() => null);
+      const tracks = ((d && d.data) || [])
+        .filter((t) => t && t.id && t.title && t.artist)
+        .map((t) => ({
+          videoId: `dz_${t.id}`,
+          title: t.title,
+          artist: t.artist.name || 'Unknown artist',
+          thumbnail: (t.album && (t.album.cover_medium || t.album.cover_big)) || '',
+          duration: t.duration ? `PT${Math.round(t.duration)}S` : '',
+          source: 'catalog',
+          verified: true,
+        }));
+      if (!tracks.length) {
         res.setHeader('Cache-Control', 'no-store');
-        return res.status(502).json({ error: firstError || 'No chart tracks found', tracks: [] });
+        return res.status(502).json({ error: 'Chart unavailable', tracks: [] });
       }
-
-      const ids = tracks.map((t) => t.videoId).join(',');
-      try {
-        const dres = await fetch(`https://www.googleapis.com/youtube/v3/videos?part=contentDetails&id=${ids}&key=${apiKey}`);
-        const ddata = await dres.json();
-        const durMap = {};
-        (ddata.items || []).forEach((it) => { durMap[it.id] = it.contentDetails?.duration || ''; });
-        tracks = tracks.map((t) => ({ ...t, duration: durMap[t.videoId] || '' }));
-      } catch {}
-
-      tracks = tracks.map((t) => ({ ...t, verified: true }));
-
-      // Only cache a (mostly) complete chart — never pin a half-failed one for days.
-      if (tracks.length >= Math.ceil(FAMOUS_CHART.length * 0.7)) {
+      if (tracks.length >= 20) {
         chartCache = { ts: Date.now(), tracks };
         res.setHeader('Cache-Control', CHART_CDN_HEADER);
       } else {
@@ -480,7 +455,7 @@ export default async function handler(req, res) {
   const pageToken = String(body.pageToken || '');
 
   if (query.length > 100) return res.status(400).json({ error: 'Query too long', tracks: [], artists: [] });
-  if (channelId && !/^UC[\w-]{20,30}$/.test(channelId)) return res.status(400).json({ error: 'Bad channel id', tracks: [], artists: [] });
+  if (channelId && !/^(UC[\w-]{20,30}|dz_\d+)$/.test(channelId)) return res.status(400).json({ error: 'Bad channel id', tracks: [], artists: [] });
   if (pageToken && !/^[\w-]{1,200}$/.test(pageToken)) return res.status(400).json({ error: 'Bad page token', tracks: [], artists: [] });
 
   // ---- FREE: only openly licensed music (Audius, Jamendo, Openverse, Internet Archive) ----
@@ -518,6 +493,47 @@ export default async function handler(req, res) {
     const payload = { tracks, artist: null, nextPageToken: '' };
     if (tracks.length) resultCache.set(skey, payload);
     return res.status(200).json(body.debug && process.env.ALLOW_DEBUG === '1' ? { ...payload, diag } : payload);
+  }
+
+  // ---- ARTISTS and ARTIST SONGS from Deezer (free, no YouTube quota). channelId "dz_<id>" ----
+  const dz = async (u) => {
+    try {
+      const r = await fetch(u, { headers: { Accept: 'application/json' } });
+      return r.ok ? await r.json() : null;
+    } catch {
+      return null;
+    }
+  };
+  if (mode === 'artists' && query && !pageToken) {
+    if (!rateLimit(req, res, { name: 'music', max: 40, windowMs: 60 * 1000 })) return undefined;
+    const d = await dz(`https://api.deezer.com/search/artist?q=${encodeURIComponent(query)}&limit=12`);
+    const artists = ((d && d.data) || [])
+      .filter((a) => a && a.id && a.name)
+      .map((a) => ({ channelId: `dz_${a.id}`, title: a.name, thumbnail: a.picture_medium || a.picture || '' }));
+    return res.status(200).json({ artists });
+  }
+  if (mode === 'artistSongs' && /^dz_\d+$/.test(channelId)) {
+    if (!rateLimit(req, res, { name: 'music', max: 40, windowMs: 60 * 1000 })) return undefined;
+    const id = channelId.slice(3);
+    const [top, info] = await Promise.all([
+      dz(`https://api.deezer.com/artist/${id}/top?limit=50`),
+      dz(`https://api.deezer.com/artist/${id}`),
+    ]);
+    const tracks = ((top && top.data) || [])
+      .filter((t) => t && t.id && t.title)
+      .map((t) => ({
+        videoId: `dz_${t.id}`,
+        title: t.title,
+        artist: (t.artist && t.artist.name) || (info && info.name) || '',
+        thumbnail: (t.album && (t.album.cover_medium || t.album.cover_big)) || '',
+        duration: t.duration ? `PT${Math.round(t.duration)}S` : '',
+        source: 'catalog',
+        verified: true,
+      }));
+    const artist = info && info.name
+      ? { title: info.name, thumbnail: info.picture_medium || '', subscribers: info.nb_fan || 0 }
+      : null;
+    return res.status(200).json({ tracks, artist, nextPageToken: '' });
   }
 
   if (!CACHEABLE.has(mode)) {

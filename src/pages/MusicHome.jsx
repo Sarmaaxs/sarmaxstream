@@ -3,9 +3,11 @@ import React, { useEffect, useState } from 'react';
 import SearchBar from '@/components/SearchBar';
 import TrackGrid from '@/components/TrackGrid';
 import { Loader2 } from 'lucide-react';
+import { userKey } from '@/lib/telemetry';
 
 export default function Home() {
   const [tracks, setTracks] = useState([]);
+  const [forYou, setForYou] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
@@ -23,6 +25,18 @@ export default function Home() {
     })();
   }, []);
 
+  // "For You" from this device's own listening history (empty for new listeners).
+  useEffect(() => {
+    const user = userKey();
+    if (!user) return undefined;
+    let alive = true;
+    fetch(`/api/recommend?user=${encodeURIComponent(user)}&limit=20`)
+      .then((r) => (r.ok ? r.json() : null))
+      .then((d) => { if (alive && d && Array.isArray(d.tracks)) setForYou(d.tracks); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+
   const emptyText = /quota/i.test(error)
     ? "We're experiencing high traffic right now. Please try again in a few minutes."
     : "Couldn't load tracks right now.";
@@ -37,6 +51,13 @@ export default function Home() {
           <SearchBar />
         </div>
       </div>
+
+      {forYou.length > 0 && (
+        <section>
+          <h2 className="text-lg font-semibold mb-4 text-white/90">For You</h2>
+          <TrackGrid tracks={forYou} />
+        </section>
+      )}
 
       <section>
         <h2 className="text-lg font-semibold mb-4 text-white/90">Famous Songs</h2>

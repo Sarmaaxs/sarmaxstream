@@ -81,6 +81,40 @@ async function tryYouTube(artist, title) {
   return best ? best.id.videoId : null;
 }
 
+// Persistent cache in Supabase (table playback_cache). Misses expire after 24h, hits never do.
+// Needs SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in Vercel (server-side only, never VITE_).
+const MISS_TTL_MS = 24 * 60 * 60 * 1000;
+const SB_URL = process.env.SUPABASE_URL;
+const SB_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+
+async function dbGet(ck) {
+  if (!SB_URL || !SB_KEY) return null;
+  try {
+    const r = await fetch(`${SB_URL}/rest/v1/playback_cache?cache_key=eq.${encodeURIComponent(ck)}&select=video_id,source,created_at`, {
+      headers: { apikey: SB_KEY, Authorization: `Bearer ${SB_KEY}` },
+    });
+    if (!r.ok) return null;
+    const rows = await r.json();
+    return rows && rows[0] ? rows[0] : null;
+  } catch { return null; }
+}
+
+async function dbSet(ck, out) {
+  if (!SB_URL || !SB_KEY) return;
+  try {
+    await fetch(`${SB_URL}/rest/v1/playback_cache?on_conflict=cache_key`, {
+      method: 'POST',
+      headers: {
+        apikey: SB_KEY,
+        Authorization: `Bearer ${SB_KEY}`,
+        'Content-Type': 'application/json',
+        Prefer: 'resolution=merge-duplicates',
+      },
+      body: JSON.stringify({ cache_key: ck, video_id: out.videoId || null, source: out.source, created_at: new Date().toISOString() }),
+    });
+  } catch {}
+}
+
 export default async function handler(req, res) {
   const q = req.query || {};
   const artist = String(q.artist || '').slice(0, 120);
@@ -89,12 +123,26 @@ export default async function handler(req, res) {
   const skipFree = q.skip === 'free';
   if (!title) return res.status(400).json({ error: 'Missing title' });
 
-  const key = JSON.stringify([norm(artist), baseTitle(title), skipFree]);
-  const hit = cache.get(key);
-  if (hit) {
+  const ck = JSON.stringify([norm(artist), baseTitle(title), skipFree]);
+  const sendOk = (out) => {
     res.setHeader('Cache-Control', 'public, s-maxage=2592000, stale-while-revalidate=86400');
-    return res.status(200).json(hit);
+    return res.status(200).json(out);
+  };
+  const notFound = () => res.status(404).json({ error: 'No playable source found' });
+
+  // 1) Memory (this server instance)
+  const hit = cache.get(ck);
+  if (hit) return hit.videoId ? sendOk(hit) : notFound();
+
+  // 2) Supabase (shared by all instances, survives restarts)
+  const row = await dbGet(ck);
+  if (row && (row.video_id || Date.now() - Date.parse(row.created_at) < MISS_TTL_MS)) {
+    const out = row.video_id ? { videoId: row.video_id, source: row.source } : { videoId: null, source: 'none' };
+    cache.set(ck, out);
+    return out.videoId ? sendOk(out) : notFound();
   }
+
+  // 3) Live lookup: free sources first, YouTube last
   if (!rateLimit(req, res, { name: 'resolve', max: 60, windowMs: 60 * 1000 })) return undefined;
 
   let out = null;
@@ -107,9 +155,9 @@ export default async function handler(req, res) {
     const yt = await tryYouTube(artist, title).catch(() => null);
     if (yt) out = { videoId: yt, source: 'youtube' };
   }
-  if (!out) return res.status(404).json({ error: 'No playable source found' });
+  if (!out) out = { videoId: null, source: 'none' };
 
-  cache.set(key, out);
-  res.setHeader('Cache-Control', 'public, s-maxage=2592000, stale-while-revalidate=86400');
-  return res.status(200).json(out);
+  cache.set(ck, out);
+  await dbSet(ck, out);
+  return out.videoId ? sendOk(out) : notFound();
 }

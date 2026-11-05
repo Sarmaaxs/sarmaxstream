@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { ListPlus, Plus } from 'lucide-react';
+import { logEvent, metaOf, mediaKey } from '@/lib/telemetry';
 
 export default function AddToPlaylistMenu({ track, playlists, onCreate, onAdd }) {
   const [open, setOpen] = useState(false);
@@ -12,7 +13,11 @@ export default function AddToPlaylistMenu({ track, playlists, onCreate, onAdd })
     return () => document.removeEventListener('mousedown', h);
   }, []);
 
-  const add = (id) => { onAdd(id, track); setOpen(false); };
+  const add = (id) => {
+    onAdd(id, track);
+    if (track && track.videoId) logEvent({ media_id: mediaKey(track), event: 'playlist_add', duration_consumed: 0, total_duration: 0, meta: metaOf(track) });
+    setOpen(false);
+  };
   const create = async () => {
     if (!newName.trim()) return;
     const pl = await onCreate(newName);
