@@ -34,10 +34,10 @@ function flush() {
   if (!queue.length) return;
   const body = JSON.stringify({ events: queue.splice(0, 50) });
   try {
-    if (navigator.sendBeacon && navigator.sendBeacon('/api/events', new Blob([body], { type: 'application/json' }))) return;
+    if (navigator.sendBeacon && navigator.sendBeacon('/api/listen', new Blob([body], { type: 'application/json' }))) return;
   } catch {}
   try {
-    fetch('/api/events', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: true }).catch(() => {});
+    fetch('/api/listen', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body, keepalive: true }).catch(() => {});
   } catch {}
 }
 

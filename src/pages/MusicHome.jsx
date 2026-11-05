@@ -30,7 +30,7 @@ export default function Home() {
     const user = userKey();
     if (!user) return undefined;
     let alive = true;
-    fetch(`/api/recommend?user=${encodeURIComponent(user)}&limit=20`)
+    fetch(`/api/listen?user=${encodeURIComponent(user)}&limit=20`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => { if (alive && d && Array.isArray(d.tracks)) setForYou(d.tracks); })
       .catch(() => {});
