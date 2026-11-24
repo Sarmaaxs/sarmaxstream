@@ -17,6 +17,9 @@ function fmt(sec) {
 }
 const stop = (e) => e.stopPropagation();
 
+// Circle used for the progress ring around the phone play button (r = 19 -> circumference).
+const RING = 2 * Math.PI * 19;
+
 export default function PlayerBar() {
   const p = usePlayer();
   const lib = useMusicLibrary();
@@ -41,19 +44,19 @@ export default function PlayerBar() {
           onKeyDown={(e) => {
             if (e.key === 'Enter') p.openNowPlaying();
           }}
-          className="relative overflow-hidden cursor-pointer rounded-xl md:rounded-none shadow-2xl md:border-t md:border-white/10 px-2.5 py-2 md:px-4 md:py-2.5"
+          className="relative overflow-hidden cursor-pointer rounded-3xl md:rounded-none shadow-2xl md:border-t md:border-white/10 px-2.5 py-2 md:px-4 md:py-2.5"
           style={{ backgroundColor: color, transition: 'background-color 800ms ease' }}
         >
           <div
             className="absolute inset-0 pointer-events-none"
-            style={{ background: 'linear-gradient(to right, rgba(0,0,0,0.25), rgba(0,0,0,0.55))' }}
+            style={{ background: 'linear-gradient(to right, rgba(0,0,0,0.35), rgba(0,0,0,0.6))' }}
           />
           <div className="relative max-w-7xl mx-auto flex items-center gap-3">
             <div className="flex items-center gap-3 min-w-0 flex-1 md:flex-none md:w-[28%]">
               <img
                 src={t.thumbnail}
                 alt=""
-                className="w-10 h-10 md:w-12 md:h-12 rounded-md object-cover shadow-lg shrink-0"
+                className="w-12 h-12 rounded-2xl md:rounded-xl object-cover shadow-lg shrink-0"
               />
               <div className="min-w-0">
                 <div className="flex items-center gap-2 min-w-0">
@@ -64,6 +67,7 @@ export default function PlayerBar() {
               </div>
             </div>
 
+            {/* Desktop controls */}
             <div className="hidden md:flex flex-1 flex-col items-center gap-1 min-w-0" onClick={stop}>
               <div className="flex items-center gap-5">
                 <button
@@ -78,15 +82,15 @@ export default function PlayerBar() {
                 </button>
                 <button
                   onClick={p.togglePlay}
-                  className="bg-white text-black rounded-full p-2.5 shadow-lg hover:scale-105 transition"
+                  className="bg-primary text-primary-foreground rounded-full p-2.5 shadow-lg hover:scale-105 transition"
                   aria-label="Play/Pause"
                 >
                   {p.resolving ? (
                     <Loader2 size={20} className="animate-spin" />
                   ) : p.isPlaying ? (
-                    <Pause size={20} />
+                    <Pause size={20} fill="currentColor" />
                   ) : (
-                    <Play size={20} className="ml-0.5" />
+                    <Play size={20} fill="currentColor" className="ml-0.5" />
                   )}
                 </button>
                 <button onClick={p.next} className="p-1.5 text-white/90 hover:text-white" aria-label="Next">
@@ -116,7 +120,8 @@ export default function PlayerBar() {
               </div>
             </div>
 
-            <div className="flex items-center gap-1 md:hidden" onClick={stop}>
+            {/* Phone controls: like, play with a progress ring around it, next */}
+            <div className="flex items-center gap-0.5 md:hidden" onClick={stop}>
               <button
                 onClick={() => lib.toggleSave(t)}
                 aria-label="Like"
@@ -124,14 +129,38 @@ export default function PlayerBar() {
               >
                 <Heart size={20} fill={saved ? 'currentColor' : 'none'} />
               </button>
-              <button onClick={p.togglePlay} aria-label="Play/Pause" className="p-2 text-white">
-                {p.resolving ? (
-                  <Loader2 size={24} className="animate-spin" />
-                ) : p.isPlaying ? (
-                  <Pause size={24} fill="currentColor" />
-                ) : (
-                  <Play size={24} fill="currentColor" />
-                )}
+              <button
+                onClick={p.togglePlay}
+                aria-label="Play/Pause"
+                className="relative w-11 h-11 flex items-center justify-center"
+              >
+                <svg className="absolute inset-0 -rotate-90" viewBox="0 0 44 44" aria-hidden="true">
+                  <circle cx="22" cy="22" r="19" fill="none" stroke="rgba(255,255,255,0.25)" strokeWidth="3" />
+                  <circle
+                    cx="22"
+                    cy="22"
+                    r="19"
+                    fill="none"
+                    stroke="#fff"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                    strokeDasharray={RING}
+                    strokeDashoffset={RING * (1 - pct / 100)}
+                    style={{ transition: 'stroke-dashoffset 250ms linear' }}
+                  />
+                </svg>
+                <span className="w-8 h-8 rounded-full bg-primary text-primary-foreground flex items-center justify-center">
+                  {p.resolving ? (
+                    <Loader2 size={18} className="animate-spin" />
+                  ) : p.isPlaying ? (
+                    <Pause size={18} fill="currentColor" />
+                  ) : (
+                    <Play size={18} fill="currentColor" className="ml-0.5" />
+                  )}
+                </span>
+              </button>
+              <button onClick={p.next} aria-label="Next" className="p-2 text-white/90">
+                <SkipForward size={22} fill="currentColor" />
               </button>
             </div>
 
@@ -156,10 +185,6 @@ export default function PlayerBar() {
                 aria-label="Volume"
               />
             </div>
-          </div>
-
-          <div className="md:hidden absolute left-2.5 right-2.5 bottom-0.5 h-[2px] rounded bg-white/25 pointer-events-none">
-            <div className="h-full rounded bg-white" style={{ width: `${pct}%`, transition: 'width 250ms linear' }} />
           </div>
         </div>
       </div>

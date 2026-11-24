@@ -28,8 +28,8 @@
     --chart-3: 197 37% 50%;
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
-    --radius: 0.75rem;
-    --bottom-nav-h: 3.5rem;
+    --radius: 1rem;
+    --bottom-nav-h: 5rem;
     --font-heading: 'Archivo', ui-sans-serif, system-ui, sans-serif;
     --font-body: 'Public Sans', ui-sans-serif, system-ui, sans-serif;
     --font-display: 'Archivo', ui-sans-serif, system-ui, sans-serif;
@@ -119,6 +119,10 @@
   [role="button"] {
     -webkit-tap-highlight-color: transparent;
   }
+
+  input[type="range"] {
+    accent-color: hsl(var(--primary));
+  }
 }
 
 @layer utilities {
@@ -129,23 +133,22 @@
   .no-scrollbar::-webkit-scrollbar {
     display: none;
   }
+  /* Material 3 style tonal surfaces (Soundbound look): solid, no blur. */
   .glass {
-    background: rgba(255, 255, 255, 0.03);
-    backdrop-filter: blur(24px);
-    -webkit-backdrop-filter: blur(24px);
+    background: hsl(var(--card));
   }
   .glass-strong {
-    background: rgba(11, 13, 18, 0.72);
-    backdrop-filter: blur(26px) saturate(150%);
-    -webkit-backdrop-filter: blur(26px) saturate(150%);
+    background: hsl(var(--popover));
     border: 1px solid hsl(var(--border) / 0.8);
   }
   .glass-hover {
-    transition: background 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
+    transition: background 0.2s ease, transform 0.2s ease;
   }
   .glass-hover:hover {
-    background: rgba(255, 255, 255, 0.07);
-    border-color: hsl(var(--primary) / 0.45);
+    background: hsl(var(--secondary));
+  }
+  .glass-hover:active {
+    transform: scale(0.98);
   }
   .text-balance {
     text-wrap: balance;
