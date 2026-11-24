@@ -2,7 +2,8 @@
 // Finds a PLAYABLE source for a catalog song, in this order:
 //   1. Audius   (verified / clearly the same artist, same title)
 //   2. Jamendo  (same artist, same title)
-//   3. YouTube  (one search, cached for 30 days, so quota is only spent once per song)
+//   3. Invidious (free YouTube search, NO quota; only if INVIDIOUS_URLS is set in Vercel)
+//   4. YouTube API (last resort: 100 quota units per search, cached so it is spent once per song)
 // Returns { videoId, source } where videoId is aud_… / jam_… / a YouTube id.
 import { rateLimit, makeCache } from './_guard.js';
 
@@ -65,6 +66,26 @@ async function tryJamendo(artist, title, dur) {
   for (const t of (d && d.results) || []) {
     if (!t || !t.id) continue;
     if (artistOk(t.artist_name, artist) && titleOk(t.name, title, '') && durOk(Number(t.duration), dur)) return `jam_${t.id}`;
+  }
+  return null;
+}
+
+// Free YouTube lookup through public Invidious instances: no API key, no quota.
+// Set INVIDIOUS_URLS in Vercel to a comma-separated list, e.g. https://inv.example.com,https://inv2.example.com
+// (public instances come and go, so list a few; if none answer we fall back to the YouTube API).
+const INVIDIOUS = (process.env.INVIDIOUS_URLS || '').split(',').map((x) => x.trim().replace(/\/$/, '')).filter((x) => /^https:\/\//.test(x));
+
+async function tryInvidious(artist, title, dur) {
+  if (!INVIDIOUS.length) return null;
+  const q = encodeURIComponent(`${mainArtist(artist)} ${baseTitle(title)} official audio`);
+  const want = baseTitle(title);
+  for (const base of INVIDIOUS.slice(0, 3)) {
+    const d = await getJson(`${base}/api/v1/search?q=${q}&type=video&fields=videoId,title,author,lengthSeconds`, 3500);
+    if (!Array.isArray(d)) continue; // instance down / API disabled: try the next one
+    const items = d.filter((v) => v && /^[A-Za-z0-9_-]{11}$/.test(v.videoId || '') && durOk(Number(v.lengthSeconds), dur));
+    const clean = items.filter((v) => !JUNK.test(v.title || '') || JUNK.test(title));
+    const best = clean.find((v) => norm(v.title || '').includes(want) && artistOk(`${v.author || ''} ${v.title || ''}`, artist)) || clean.find((v) => norm(v.title || '').includes(want));
+    return best ? best.videoId : null;
   }
   return null;
 }
@@ -150,6 +171,10 @@ export default async function handler(req, res) {
     const [a, j] = await Promise.all([tryAudius(artist, title, dur).catch(() => null), tryJamendo(artist, title, dur).catch(() => null)]);
     if (a) out = { videoId: a, source: 'audius' };
     else if (j) out = { videoId: j, source: 'jamendo' };
+  }
+  if (!out) {
+    const inv = await tryInvidious(artist, title, dur).catch(() => null);
+    if (inv) out = { videoId: inv, source: 'youtube' };
   }
   if (!out) {
     const yt = await tryYouTube(artist, title).catch(() => null);
