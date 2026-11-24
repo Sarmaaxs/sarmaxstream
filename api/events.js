@@ -1,8 +1,9 @@
-// api/events.js: POST { events: [...] } from the player. Stores anonymous listening events.
+// api/events.js (also serves /api/health): POST { events: [...] } from the player. Stores anonymous listening events.
 // Each event: { user_key, media_id, media_type, event, duration_consumed, total_duration, value, meta }
 // event is one of: complete | skip | repeat | playlist_add | volume. At most 50 per request.
 import { rateLimit, parseBody } from './_guard.js';
 import { sb, sbReady } from './_sb.js';
+import health from './_health.js';
 
 const EVENTS = new Set(['complete', 'skip', 'repeat', 'playlist_add', 'volume']);
 const TYPES = new Set(['music', 'movie', 'book']);
@@ -13,6 +14,8 @@ const secs = (v) => {
 };
 
 export default async function handler(req, res) {
+  // /api/health is rewritten here (vercel.json) so it does not count as its own serverless function.
+  if (req.query && req.query.__h === '1') return health(req, res);
   if (req.method !== 'POST') return res.status(405).json({ error: 'POST only' });
   if (!rateLimit(req, res, { name: 'events', max: 30, windowMs: 60 * 1000 })) return undefined;
 

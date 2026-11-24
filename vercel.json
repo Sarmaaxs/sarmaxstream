@@ -4,6 +4,10 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
+      "source": "/api/health",
+      "destination": "/api/events?__h=1"
+    },
+    {
       "source": "/_botid/challenge.js",
       "destination": "https://vercel.com"
     },
