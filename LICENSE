@@ -1,21 +1,92 @@
-MIT License
+PERSONAL EVALUATION LICENSE
 
-Copyright (c) 2026 Sarmaaxs
+Copyright (c) 2026 Sarmaaxs. All rights reserved.
 
-Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
-copies of the Software, and to permit persons to whom the Software is
-furnished to do so, subject to the following conditions:
+IMPORTANT: This is a custom, restrictive license. It is not an open-source
+license and does not grant permission for commercial use or redistribution.
 
-The above copyright notice and this permission notice shall be included in all
-copies or substantial portions of the Software.
+1. LIMITED PERMISSION
+The copyright holder grants you a limited, revocable, non-exclusive,
+non-transferable permission to access, view, download and run this software
+solely for your own personal evaluation, learning and experimentation.
+This permission is for private, non-commercial use only.
 
-THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
-IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
-FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
-AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
-LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
-OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
-SOFTWARE.
+2. RESTRICTIONS
+Unless you receive prior written permission from the copyright holder, you
+may not, in whole or in part:
+(a) sell, rent, lease, sublicense, publish, distribute, share or otherwise
+    make this software or copies of it available to another person;
+(b) use this software, or any part of it, for commercial purposes, paid work,
+    a business, a hosted service or any activity intended to generate revenue;
+(c) republish, mirror, re-upload or redistribute the source code, binaries,
+    modified versions or substantial portions of the project;
+(d) create or distribute derivative works, forks or competing products based
+    on this software;
+(e) remove or alter copyright, ownership or license notices; or
+(f) claim the software, its design or its contents as your own.
+
+3. NO AUTOMATIC RIGHTS
+Viewing a public repository, starring it, forking it on a hosting platform,
+or downloading a copy does not grant rights beyond the limited permission
+expressly stated in this license. Platform features do not override these
+terms. Any use not expressly permitted is reserved to the copyright holder.
+
+4. THIRD-PARTY MATERIAL
+This license applies only to material owned by the copyright holder.
+Third-party libraries, assets, trademarks and services remain subject to
+their respective owners' terms and licenses. Nothing here grants rights to
+third-party material.
+
+5. MEDIA AND COPYRIGHT RESPONSIBILITY
+This software does not grant any license or permission to access, stream,
+download, copy or distribute movies, television programs, music or other
+third-party media. The appearance of media, links, streams or download
+options in a deployment does not establish that the material is authorized.
+You must use the software only with content you own, are permitted to access,
+or that is lawfully made available to you. You must not use it to access,
+save, share or redistribute unauthorized copyrighted material.
+
+The copyright holder does not own, control, verify, endorse or authorize
+third-party media, websites, links, streams, catalogs or deployments that
+may be connected to or used with this software. To the maximum extent
+permitted by applicable law, the copyright holder disclaims responsibility
+for third-party content and for another person's deployment or use of the
+software. Users and operators are responsible for checking applicable laws,
+service terms and permissions. This clause does not remove any liability
+that cannot legally be excluded.
+
+6. OWNERSHIP
+The software is licensed, not sold. The copyright holder retains all rights,
+title and interest in the software, including its source code and original
+project materials, except for the limited permission expressly granted above.
+
+7. TERMINATION
+This permission terminates automatically if you violate these terms. Upon
+termination, you must stop using the software and delete copies in your
+possession or control. The copyright holder may also revoke permission by
+written notice.
+
+8. DISCLAIMER OF WARRANTY
+THE SOFTWARE IS PROVIDED "AS IS" AND "AS AVAILABLE", WITHOUT WARRANTIES OR
+CONDITIONS OF ANY KIND, EXPRESS OR IMPLIED, INCLUDING WARRANTIES OF
+MERCHANTABILITY, FITNESS FOR A PARTICULAR PURPOSE, TITLE AND
+NON-INFRINGEMENT. YOU ARE RESPONSIBLE FOR HOW YOU USE AND EVALUATE IT.
+
+9. LIMITATION OF LIABILITY
+TO THE MAXIMUM EXTENT PERMITTED BY APPLICABLE LAW, THE COPYRIGHT HOLDER
+SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL
+OR PUNITIVE DAMAGES, OR ANY LOSS OF DATA, PROFITS, REVENUE OR BUSINESS,
+ARISING FROM OR RELATING TO THE SOFTWARE OR THESE TERMS. NOTHING IN THESE
+TERMS EXCLUDES LIABILITY THAT CANNOT LAWFULLY BE EXCLUDED.
+
+10. PERMISSION REQUESTS
+For commercial use, redistribution, publication, integration into another
+product, or any use outside personal evaluation, obtain written permission
+from the copyright holder before proceeding.
+
+11. GOVERNING LAW
+These terms are subject to applicable law. If any provision is unenforceable,
+the remaining provisions continue to apply to the extent permitted by law.
+
+By using, downloading or running the software, you acknowledge these terms.
+If you do not agree, do not use or retain a copy of the software.
