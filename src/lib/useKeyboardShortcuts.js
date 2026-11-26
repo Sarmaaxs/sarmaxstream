@@ -1,5 +1,4 @@
 import { useEffect, useRef } from 'react';
-import { getPrefs } from '@/lib/prefs';
 
 export function useKeyboardShortcuts(player, onLike) {
   const ref = useRef({ player, onLike });
@@ -7,7 +6,6 @@ export function useKeyboardShortcuts(player, onLike) {
 
   useEffect(() => {
     const onKey = (e) => {
-      if (!getPrefs().shortcuts) return;
       if (e.metaKey || e.ctrlKey || e.altKey) return;
       const el = e.target;
       const tag = el && el.tagName;

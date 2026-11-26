@@ -2,7 +2,6 @@ import React, { createContext, useContext, useState, useEffect, useRef, useCallb
 import { useSettings } from '@/lib/useSettings';
 import { cachedJson } from '@/lib/cache';
 import { pushBackHandler } from '@/lib/backStack';
-import { logEvent, metaOf, mediaKey } from '@/lib/telemetry';
 
 const PlayerContext = createContext(null);
 
@@ -20,7 +19,7 @@ function loadSaved() {
 
 // Tracks from Audius / Jamendo have ids like "aud_xxx" / "jam_123" and stream through /api/stream.
 // Everything else is a YouTube video id.
-const isAudioId = (id) => typeof id === 'string' && /^(aud|jam|ia|ov)_/.test(id);
+const isAudioId = (id) => typeof id === 'string' && (id.startsWith('aud_') || id.startsWith('jam_'));
 // Catalog ids (Deezer / iTunes) have no audio yet; /api/resolve finds one when you press play.
 const isCatalogId = (id) => typeof id === 'string' && /^(dz|it)_\d+$/.test(id);
 const parseDur = (iso) => { const m = /^PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?$/.exec(iso || ''); return m ? (+m[1] || 0) * 3600 + (+m[2] || 0) * 60 + (+m[3] || 0) : 0; };
@@ -61,34 +60,6 @@ function makeAudioEngine() {
 }
 
 const QUALITY_MAP = { auto: 'auto', low: 'small', normal: 'medium', high: 'hd720' };
-
-// ---- listening events (anonymous; see lib/telemetry.js) ----
-let volTimer = null;
-
-// Called when the player moves from one track to another. Logs complete (>= 75%) or skip.
-function noteTransition(prev, next, consumed, engine) {
-  if (!prev) return;
-  let total = 0;
-  try { total = Math.round((engine && engine.getDuration ? engine.getDuration() : 0) || 0); } catch {}
-  if (!total) total = parseDur(prev.duration);
-  if (!total) return; // unknown length: don't guess
-  const t = Math.round(consumed || 0);
-  const base = { media_id: mediaKey(prev), duration_consumed: t, total_duration: total, meta: metaOf(prev) };
-  if (mediaKey(prev) === mediaKey(next)) {
-    if (t >= 0.75 * total) logEvent({ ...base, event: 'repeat' });
-    return;
-  }
-  logEvent({ ...base, event: t >= 0.75 * total ? 'complete' : 'skip' });
-}
-
-// Volume is logged once the person stops moving the slider.
-function noteVolume(v, cur) {
-  if (!cur) return;
-  clearTimeout(volTimer);
-  volTimer = setTimeout(() => {
-    logEvent({ media_id: mediaKey(cur), event: 'volume', value: v / 100, duration_consumed: 0, total_duration: 0, meta: metaOf(cur) });
-  }, 4000);
-}
 
 export function PlayerProvider({ children }) {
   const { autoplay, crossfade, gapless, quality, playbackSpeed, normalization, sleepTimer } = useSettings();
@@ -211,7 +182,6 @@ export function PlayerProvider({ children }) {
     const q = queueRef.current;
     if (i < 0 || i >= q.length) return;
     const track = q[i];
-    if (!resolvingRef.current) noteTransition(currentRef.current, track, timeRef.current, eng());
     resolvingRef.current = false;
     setResolving(false);
     loadedRef.current = true;
@@ -226,7 +196,7 @@ export function PlayerProvider({ children }) {
       const f = r.filter((x) => x.videoId !== track.videoId);
       return [{ videoId: track.videoId, title: track.title, artist: track.artist, thumbnail: track.thumbnail }, ...f].slice(0, 30);
     });
-    if (isCatalogId(track.videoId)) {
+    if (isCatalogId(track.videoId) && !track._offlineUrl) {
       // Silence whatever was playing, then ask the server where this song can be played.
       try { audioRef.current && audioRef.current.stopVideo(); } catch {}
       try { ytRef.current && ytRef.current.pauseVideo && ytRef.current.pauseVideo(); } catch {}
@@ -402,10 +372,7 @@ export function PlayerProvider({ children }) {
       on('pause', () => { if (activeRef.current !== 'audio' || el.ended) return; setIsPlaying(false); }),
       on('ended', () => {
         if (activeRef.current !== 'audio') return;
-        if (repeatRef.current) {
-          if (currentRef.current) logEvent({ media_id: mediaKey(currentRef.current), event: 'repeat', duration_consumed: Math.round(el.duration || 0), total_duration: Math.round(el.duration || 0), meta: metaOf(currentRef.current) });
-          el.currentTime = 0; a.playVideo();
-        }
+        if (repeatRef.current) { el.currentTime = 0; a.playVideo(); }
         else if (autoplayRef.current) { if (gaplessRef.current) next(); else setTimeout(() => next(), 250); }
         else setIsPlaying(false);
       }),
@@ -481,7 +448,6 @@ export function PlayerProvider({ children }) {
   const setVol = useCallback((v) => {
     setVolume(v);
     volumeRef.current = v;
-    noteVolume(v, currentRef.current);
     if (eng() && eng().setVolume) {
       try { eng().setVolume(v); if (v > 0) setMuted(false); } catch {}
     }

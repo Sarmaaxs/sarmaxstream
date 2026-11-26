@@ -2,7 +2,7 @@ import React, { useRef } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import MovieCard from "./MovieCard";
 
-export default function MovieRow({ title, items, loading, priority = false }) {
+export default function MovieRow({ title, items, loading }) {
   const ref = useRef(null);
 
   const scroll = (dir) => {
@@ -14,11 +14,7 @@ export default function MovieRow({ title, items, loading, priority = false }) {
   if (!loading && (!items || items.length === 0)) return null;
 
   return (
-    <section
-      className="mb-10"
-      // The browser skips drawing rows that are off-screen until you scroll near them.
-      style={{ contentVisibility: "auto", containIntrinsicSize: "auto 330px" }}
-    >
+    <section className="mb-10">
       <div className="flex items-center justify-between px-4 sm:px-6 lg:px-10 mb-3">
         <h2 className="font-display font-bold text-xl sm:text-2xl">{title}</h2>
         <div className="hidden sm:flex items-center gap-2">
@@ -46,7 +42,7 @@ export default function MovieRow({ title, items, loading, priority = false }) {
           ? Array.from({ length: 8 }).map((_, i) => (
               <div key={i} className="shrink-0 w-[150px] sm:w-[170px] aspect-[2/3] rounded-xl bg-muted animate-pulse" />
             ))
-          : items.map((item, i) => <MovieCard key={item.id || i} item={item} index={i} eager={priority && i < 6} />)}
+          : items.map((item, i) => <MovieCard key={item.id || i} item={item} index={i} />)}
       </div>
     </section>
   );

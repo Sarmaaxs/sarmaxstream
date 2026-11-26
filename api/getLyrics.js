@@ -1,4 +1,5 @@
-// api/getLyrics.js — lyrics lookup.
+// api/getLyrics.js — REPLACES base44/functions/getLyrics/entry.ts
+// Deploy target: same as searchMusic.js (Vercel serverless / Railway+Express).
 // Sources: LRCLIB (many lookups at once), NetEase (second synced source), lyrics.ovh (written only).
 // No env vars needed; none of them require a key.
 
@@ -195,7 +196,7 @@ async function tryOvh(artist, title, ms) {
 }
 
 export default async function handler(req, res) {
-  if (!rateLimit(req, res, { name: 'lyrics', max: 30, windowMs: 60 * 1000 })) return undefined;
+  if (!(await rateLimit(req, res, { name: 'lyrics', max: 30, windowMs: 60 * 1000 }))) return undefined;
   try {
     const body = req.body && typeof req.body === 'object' ? req.body : JSON.parse(req.body || '{}');
     let artist = (body.artist || '').toString().trim().slice(0, 200);

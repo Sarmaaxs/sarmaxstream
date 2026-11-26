@@ -1,5 +1,4 @@
 import { cachedJson } from "@/lib/cache";
-import { getPrefs } from "@/lib/prefs";
 const IMG_BASE = "https://image.tmdb.org/t/p";
 
 // Anime posters come from MyAnimeList as full URLs (https://...), so pass
@@ -12,47 +11,20 @@ export function imageUrl(path, size = "w500") {
   return `${IMG_BASE}/${size}${path}`;
 }
 
-export function backdropUrl(path, size = "w1280") {
+export function backdropUrl(path, size = "original") {
   if (!path) return null;
   if (isAbsolute(path)) return path;
   return `${IMG_BASE}/${size}${path}`;
 }
 
-export { isAbsolute };
-
-// Proxy a TMDB v3 endpoint through your API (keeps the token server-side).
+// Proxy a TMDB v3 endpoint through the Railway API (keeps the token server-side).
 // path: e.g. "trending/movie/week", "movie/550", "search/multi", "genre/movie/list"
-//
-// SPEED: we ask with GET first. A GET can be cached at the edge (Vercel's CDN,
-// your API already sends s-maxage) and needs no extra CORS "preflight" round trip.
-// A POST can't be cached and costs one extra network trip every time.
-// If the server only understands POST, we fall back to it automatically.
 const API = import.meta.env.VITE_API_URL;
-const TTL = 15 * 60 * 1000;
-
-function toQuery(path, params) {
-  const q = new URLSearchParams({ path });
-  Object.keys(params || {}).sort().forEach((k) => {
-    if (params[k] !== undefined && params[k] !== null) q.set(k, String(params[k]));
-  });
-  return q.toString();
-}
-
 export async function tmdb(path, params = {}) {
-  const lang = getPrefs().contentLanguage;
-  if (lang && lang !== "en-US" && params.language === undefined) params = { ...params, language: lang };
-  let res;
-  try {
-    res = await cachedJson(`${API}/tmdb?${toQuery(path, params)}`, { method: "GET" }, TTL);
-  } catch {
-    res = null;
-  }
-  if (!res || res.error) {
-    const body = JSON.stringify({ path, params });
-    res = await cachedJson(`${API}/tmdb`, { method: "POST", headers: { "Content-Type": "application/json" }, body }, TTL);
-  }
+  const body = JSON.stringify({ path, params });
+  const res = await cachedJson(`${API}/tmdb`, { method: "POST", headers: { "Content-Type": "application/json" }, body }, 15 * 60 * 1000);
   if (!res || res.error) throw new Error((res && res.error) || "Request failed");
-  return res.data !== undefined ? res.data : res;
+  return res.data;
 }
 
 export async function tmdbTrending(window = "week") {

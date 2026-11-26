@@ -160,7 +160,7 @@ export default async function handler(req, res) {
   const key = JSON.stringify([mode, query.toLowerCase(), page, id]);
   const hit = fresh.get(key);
   if (hit) { res.setHeader('X-Cache', 'HIT'); return res.status(200).json(hit); }
-  if (!rateLimit(req, res, { name: 'books', max: 40, windowMs: 60 * 1000 })) return undefined;
+  if (!(await rateLimit(req, res, { name: 'books', max: 40, windowMs: 60 * 1000 }))) return undefined;
 
   try {
     const out = await firstGood(mode, query, page, id);

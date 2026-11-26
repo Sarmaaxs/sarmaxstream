@@ -4,32 +4,11 @@
   "outputDirectory": "dist",
   "rewrites": [
     {
-      "source": "/api/health",
-      "destination": "/api/events?__h=1"
-    },
-    {
-      "source": "/_botid/challenge.js",
-      "destination": "https://vercel.com"
-    },
-    {
-      "source": "/_botid/:path*",
-      "destination": "https://vercel.com*"
-    },
-    {
       "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
   ],
   "headers": [
-    {
-      "source": "/_botid/:path*",
-      "headers": [
-        {
-          "key": "X-Frame-Options",
-          "value": "SAMEORIGIN"
-        }
-      ]
-    },
     {
       "source": "/assets/(.*)",
       "headers": [
@@ -49,19 +28,6 @@
         {
           "key": "Cache-Control",
           "value": "public, max-age=86400, s-maxage=604800, stale-while-revalidate=86400"
-        }
-      ]
-    },
-    {
-      "source": "/api/((?!stream|downloadMusic|health).*)",
-      "headers": [
-        {
-          "key": "CDN-Cache-Control",
-          "value": "public"
-        },
-        {
-          "key": "Vary",
-          "value": "Accept-Encoding"
         }
       ]
     },
@@ -89,16 +55,12 @@
           "value": "camera=(), microphone=(), geolocation=(), payment=()"
         },
         {
+          "key": "Content-Security-Policy",
+          "value": "object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"
+        },
+        {
           "key": "Cross-Origin-Opener-Policy",
           "value": "same-origin-allow-popups"
-        },
-        {
-          "key": "Cache-Control",
-          "value": "public, max-age=0, s-maxage=60, stale-while-revalidate=86400"
-        },
-        {
-          "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' https://www.youtube.com https://ytimg.com https://vercel-scripts.com https://sarmaxstreams.vercel.app; style-src 'self' 'unsafe-inline' https://googleapis.com; font-src 'self' https://gstatic.com data:; img-src 'self' data: blob: https:; media-src 'self' blob: https:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.sentry.io https://anilist.co https://vercel-insights.com https://vercel-insights.com https://pro.et https://pro.et https://vidlink.pro https://vidsrc.to https://vidsrc.xyz https://megaplay.buzz https://vidhawk.buzz https://sarmaxstreams.vercel.app https://api.sarmaxstream.pro.et; frame-src 'self' https://www.youtube.com https://youtube-nocookie.com https://vidlink.pro https://vidsrc.to https://vidsrc.xyz https://megaplay.buzz https://vidhawk.buzz; worker-src 'self'; manifest-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'self'"
         }
       ]
     },

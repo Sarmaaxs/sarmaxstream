@@ -1,39 +1,82 @@
-// Shared helpers for the API routes (the leading underscore keeps Vercel from
-// exposing this file as its own endpoint).
-//
-// Note: serverless instances don't share memory, so this is best-effort
-// protection. It stops one person hammering the API and cuts repeat YouTube
-// calls a lot, which is what protects your daily quota.
-
+// Configure Upstash Redis on Vercel for cross-instance atomic rate limiting.
+// Without it, a per-instance memory limiter is retained for local development.
 const buckets = new Map();
+const REDIS_SCRIPT = [
+  "local count = redis.call('INCR', KEYS[1])",
+  "if count == 1 then redis.call('EXPIRE', KEYS[1], ARGV[1]) end",
+  "return {count, redis.call('TTL', KEYS[1])}",
+].join('; ');
 
-export function clientIp(req) {
-  const xf = req.headers && req.headers['x-forwarded-for'];
-  const first = (Array.isArray(xf) ? xf[0] : xf || '').split(',')[0].trim();
-  return first || (req.socket && req.socket.remoteAddress) || 'unknown';
+function headerValue(value) {
+  return Array.isArray(value) ? String(value[0] || '') : String(value || '');
 }
-
-// Returns true if the request may continue; otherwise it has already sent a 429.
-export function rateLimit(req, res, { name, max, windowMs }) {
-  const now = Date.now();
-  const key = `${name}:${clientIp(req)}`;
-  let b = buckets.get(key);
-  if (!b || now > b.reset) {
-    b = { count: 0, reset: now + windowMs };
-    buckets.set(key, b);
+export function clientIp(req) {
+  const real = headerValue(req.headers && req.headers['x-real-ip']).trim();
+  if (real) return real;
+  const forwarded = headerValue(req.headers && req.headers['x-forwarded-for']).split(',')[0].trim();
+  return forwarded || (req.socket && req.socket.remoteAddress) || 'unknown';
+}
+function localHit(key, max, windowMs, now) {
+  let bucket = buckets.get(key);
+  if (!bucket || now >= bucket.reset) {
+    bucket = { count: 0, reset: now + windowMs };
+    buckets.set(key, bucket);
   }
-  b.count += 1;
+  bucket.count += 1;
   if (buckets.size > 5000) {
-    for (const [k, v] of buckets) if (now > v.reset) buckets.delete(k);
+    for (const [k, value] of buckets) if (now >= value.reset) buckets.delete(k);
   }
-  if (b.count > max) {
-    res.setHeader('Retry-After', String(Math.ceil((b.reset - now) / 1000)));
+  return { count: bucket.count, retryAfter: Math.max(1, Math.ceil((bucket.reset - now) / 1000)) };
+}
+export async function rateLimit(req, res, { name, max, windowMs }) {
+  const key = 'sarmaxstream:rl:' + name + ':' + clientIp(req);
+  let hit;
+  const redisUrl = process.env.UPSTASH_REDIS_REST_URL;
+  const redisToken = process.env.UPSTASH_REDIS_REST_TOKEN;
+  if (redisUrl || redisToken) {
+    if (!redisUrl || !redisToken) {
+      res.setHeader('Cache-Control', 'no-store');
+      res.status(503).json({ error: 'Rate limiting is not configured correctly.' });
+      return false;
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 2500);
+    try {
+      const response = await fetch(redisUrl.replace(/\/+$/, '') + '/', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + redisToken, 'Content-Type': 'application/json' },
+        body: JSON.stringify(['EVAL', REDIS_SCRIPT, '1', key, String(Math.max(1, Math.ceil(windowMs / 1000)))]),
+        signal: controller.signal,
+      });
+      const payload = await response.json();
+      if (!response.ok || payload.error || !Array.isArray(payload.result)) throw new Error('Redis rate-limit request failed');
+      hit = {
+        count: Number(payload.result[0]),
+        retryAfter: Math.max(1, Number(payload.result[1]) || Math.ceil(windowMs / 1000)),
+      };
+      if (!Number.isFinite(hit.count)) throw new Error('Redis returned an invalid counter');
+    } catch {
+      res.setHeader('Cache-Control', 'no-store');
+      res.status(503).json({ error: 'Rate limiting is temporarily unavailable.' });
+      return false;
+    } finally { clearTimeout(timer); }
+  } else if (process.env.VERCEL === '1') {
+    // A per-instance Map is not a security boundary on serverless platforms.
+    // Require a shared store in production rather than silently weakening limits.
+    res.setHeader('Cache-Control', 'no-store');
+    res.status(503).json({ error: 'Shared rate limiting is not configured. Set the Upstash Redis REST URL and token.' });
+    return false;
+  } else {
+    hit = localHit(key, max, windowMs, Date.now());
+  }
+  if (hit.count > max) {
+    res.setHeader('Retry-After', String(hit.retryAfter));
+    res.setHeader('Cache-Control', 'no-store');
     res.status(429).json({ error: 'Too many requests. Please slow down a little.', tracks: [], artists: [], books: [], lines: [], plain: '' });
     return false;
   }
   return true;
 }
-
 export function makeCache({ ttlMs, max }) {
   const m = new Map();
   return {
@@ -49,7 +92,6 @@ export function makeCache({ ttlMs, max }) {
     },
   };
 }
-
 export function parseBody(req) {
   if (req.method === 'GET') return req.query || {};
   if (req.body && typeof req.body === 'object') return req.body;

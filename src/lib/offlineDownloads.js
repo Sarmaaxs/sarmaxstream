@@ -1,156 +1,139 @@
-// Offline downloads: store audio blobs in IndexedDB so the Android app
-// (and the website) can play without network.
-// Web download button still also offers a normal file save.
-
-const DB_NAME = 'sarmax-offline';
-const DB_VER = 1;
+// Persistent music downloads for offline playback/storage inside the app.
+// IndexedDB stores Blob objects without converting large audio files to base64.
+const DB_NAME = 'sarmax-offline-music';
+const DB_VERSION = 1;
 const STORE = 'tracks';
 
+let dbPromise;
+const objectUrls = new Map();
+
 function openDb() {
-  return new Promise((resolve, reject) => {
-    if (typeof indexedDB === 'undefined') {
-      reject(new Error('no indexedDB'));
-      return;
-    }
-    const req = indexedDB.open(DB_NAME, DB_VER);
-    req.onupgradeneeded = () => {
-      const db = req.result;
-      if (!db.objectStoreNames.contains(STORE)) {
-        db.createObjectStore(STORE, { keyPath: 'videoId' });
-      }
+  if (typeof indexedDB === 'undefined') return Promise.reject(new Error('Offline storage is unavailable'));
+  if (dbPromise) return dbPromise;
+  dbPromise = new Promise((resolve, reject) => {
+    const request = indexedDB.open(DB_NAME, DB_VERSION);
+    request.onupgradeneeded = () => {
+      const db = request.result;
+      if (!db.objectStoreNames.contains(STORE)) db.createObjectStore(STORE, { keyPath: 'videoId' });
     };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
+    request.onsuccess = () => {
+      const db = request.result;
+      db.onversionchange = () => db.close();
+      resolve(db);
+    };
+    request.onerror = () => reject(request.error || new Error('Could not open offline storage'));
+    request.onblocked = () => reject(new Error('Offline storage upgrade is blocked'));
+  }).catch((error) => {
+    dbPromise = null;
+    throw error;
   });
+  return dbPromise;
 }
 
-function txDone(tx) {
+function requestResult(request) {
   return new Promise((resolve, reject) => {
-    tx.oncomplete = () => resolve();
-    tx.onerror = () => reject(tx.error);
-    tx.onabort = () => reject(tx.error || new Error('aborted'));
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error || new Error('Offline storage request failed'));
   });
-}
-
-/** List all offline tracks (metadata only, no blobs). */
-export async function listOffline() {
-  try {
-    const db = await openDb();
-    return await new Promise((resolve) => {
-      const tx = db.transaction(STORE, 'readonly');
-      const req = tx.objectStore(STORE).getAll();
-      req.onsuccess = () => {
-        const rows = (req.result || []).map(({ blob, ...meta }) => meta);
-        // newest first
-        rows.sort((a, b) => (b.savedAt || 0) - (a.savedAt || 0));
-        resolve(rows);
-      };
-      req.onerror = () => resolve([]);
-    });
-  } catch {
-    return [];
-  }
 }
 
 export async function hasOffline(videoId) {
-  if (!videoId) return false;
+  if (typeof videoId !== 'string' || !videoId) return false;
   try {
     const db = await openDb();
-    return await new Promise((resolve) => {
-      const tx = db.transaction(STORE, 'readonly');
-      const req = tx.objectStore(STORE).getKey(videoId);
-      req.onsuccess = () => resolve(!!req.result);
-      req.onerror = () => resolve(false);
-    });
+    const tx = db.transaction(STORE, 'readonly');
+    const record = await requestResult(tx.objectStore(STORE).get(videoId));
+    return !!(record && record.blob instanceof Blob && record.blob.size > 0);
   } catch {
     return false;
   }
 }
 
-/** Return a blob: URL for offline playback, or null. Caller should revoke later. */
-export async function getOfflineUrl(videoId) {
-  if (!videoId) return null;
-  try {
-    const db = await openDb();
-    const row = await new Promise((resolve) => {
-      const tx = db.transaction(STORE, 'readonly');
-      const req = tx.objectStore(STORE).get(videoId);
-      req.onsuccess = () => resolve(req.result || null);
-      req.onerror = () => resolve(null);
-    });
-    if (!row || !row.blob) return null;
-    return URL.createObjectURL(row.blob);
-  } catch {
-    return null;
-  }
-}
-
-export async function getOfflineMeta(videoId) {
-  try {
-    const db = await openDb();
-    return await new Promise((resolve) => {
-      const tx = db.transaction(STORE, 'readonly');
-      const req = tx.objectStore(STORE).get(videoId);
-      req.onsuccess = () => {
-        const r = req.result;
-        if (!r) return resolve(null);
-        const { blob, ...meta } = r;
-        resolve(meta);
-      };
-      req.onerror = () => resolve(null);
-    });
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Save a track for offline. blob must be a Blob/File.
- * Overwrites if already present.
- */
 export async function saveOffline(track, blob) {
-  if (!track?.videoId || !blob || blob.size < 1024) {
-    throw new Error('invalid track or empty audio');
+  const videoId = track && track.videoId;
+  if (typeof videoId !== 'string' || !videoId || !(blob instanceof Blob) || blob.size === 0) return false;
+  try {
+    const db = await openDb();
+    const tx = db.transaction(STORE, 'readwrite');
+    tx.objectStore(STORE).put({
+      videoId,
+      title: String(track.title || 'Unknown').slice(0, 200),
+      artist: String(track.artist || '').slice(0, 200),
+      thumbnail: String(track.thumbnail || '').slice(0, 1000),
+      duration: Number.isFinite(Number(track.duration)) ? Number(track.duration) : 0,
+      blob,
+      savedAt: Date.now(),
+    });
+    await new Promise((resolve, reject) => {
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error || new Error('Could not save offline track'));
+      tx.onabort = () => reject(tx.error || new Error('Offline save was cancelled'));
+    });
+    return true;
+  } catch {
+    // A quota/private-browsing failure should not turn a successful download
+    // into a failed one; the normal file-save path can still complete.
+    return false;
   }
-  const db = await openDb();
-  const row = {
-    videoId: track.videoId,
-    title: track.title || '',
-    artist: track.artist || '',
-    thumbnail: track.thumbnail || '',
-    duration: track.duration || '',
-    size: blob.size,
-    mime: blob.type || 'audio/mpeg',
-    savedAt: Date.now(),
-    blob,
-  };
-  const tx = db.transaction(STORE, 'readwrite');
-  tx.objectStore(STORE).put(row);
-  await txDone(tx);
-  return { videoId: row.videoId, title: row.title, artist: row.artist, thumbnail: row.thumbnail, duration: row.duration, size: row.size, savedAt: row.savedAt };
 }
 
-export async function removeOffline(videoId) {
-  if (!videoId) return;
-  const db = await openDb();
-  const tx = db.transaction(STORE, 'readwrite');
-  tx.objectStore(STORE).delete(videoId);
-  await txDone(tx);
+export async function listOffline() {
+  try {
+    const db = await openDb();
+    const tx = db.transaction(STORE, 'readonly');
+    const rows = await requestResult(tx.objectStore(STORE).getAll());
+    return rows
+      .filter((row) => row && row.blob instanceof Blob && row.blob.size > 0)
+      .map(({ videoId, title, artist, thumbnail, duration, savedAt, blob }) => ({
+        videoId, title, artist, thumbnail, duration, savedAt, size: blob.size,
+      }))
+      .sort((a, b) => b.savedAt - a.savedAt);
+  } catch {
+    return [];
+  }
 }
 
-/** Trigger a normal browser/file download (website behaviour). */
-export function downloadFileToDevice(blob, filename) {
-  const a = document.createElement('a');
-  a.href = URL.createObjectURL(blob);
-  a.download = filename || 'track.mp3';
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  setTimeout(() => URL.revokeObjectURL(a.href), 8000);
+export async function getOfflineTrack(videoId) {
+  if (typeof videoId !== 'string' || !videoId) return null;
+  try {
+    const db = await openDb();
+    const tx = db.transaction(STORE, 'readonly');
+    const row = await requestResult(tx.objectStore(STORE).get(videoId));
+    return row && row.blob instanceof Blob ? row : null;
+  } catch {
+    return null;
+  }
 }
 
-export function formatBytes(n) {
-  if (!n || n < 1024) return `${n || 0} B`;
-  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+
+export async function getOfflineUrl(videoId) {
+  if (typeof videoId !== 'string' || !videoId || typeof URL === 'undefined' || !URL.createObjectURL) return null;
+  if (objectUrls.has(videoId)) return objectUrls.get(videoId);
+  const row = await getOfflineTrack(videoId);
+  if (!row || !(row.blob instanceof Blob)) return null;
+  const url = URL.createObjectURL(row.blob);
+  objectUrls.set(videoId, url);
+  return url;
+}
+
+export async function removeOffline(videoId, { revokeUrl = true } = {}) {
+  if (typeof videoId !== 'string' || !videoId) return false;
+  try {
+    const db = await openDb();
+    const tx = db.transaction(STORE, 'readwrite');
+    tx.objectStore(STORE).delete(videoId);
+    await new Promise((resolve, reject) => {
+      tx.oncomplete = resolve;
+      tx.onerror = () => reject(tx.error || new Error('Could not remove offline track'));
+      tx.onabort = () => reject(tx.error || new Error('Offline removal was cancelled'));
+    });
+    const url = objectUrls.get(videoId);
+    if (url && revokeUrl) {
+      try { URL.revokeObjectURL(url); } catch {}
+      objectUrls.delete(videoId);
+    }
+    return true;
+  } catch {
+    return false;
+  }
 }

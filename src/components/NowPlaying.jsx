@@ -7,17 +7,16 @@ import ShareButton from '@/components/ShareButton';
 import LyricsView from '@/components/LyricsView';
 import Equalizer from '@/components/Equalizer';
 import { useSettings } from '@/lib/useSettings';
-import { isNative } from '@/lib/native';
-import { startDownload, useDownloadJob } from '@/lib/downloadManager';
 import {
   ChevronDown, Play, Pause, SkipBack, SkipForward, Repeat, Shuffle,
-  Heart, Loader2, Download, Check,
+  Heart, Loader2, Download,
 } from 'lucide-react';
 
 const SIZE_KEY = 'sarmax_lyric_size';
 const LYRICS_CACHE_PREFIX = 'sarmax_lyrics_v2:';
 const OFFSET_PREFIX = 'sarmax_lyric_offset:';
 
+const isAudioId = (id) => typeof id === 'string' && (id.startsWith('aud_') || id.startsWith('jam_'));
 const isCatalogId = (id) => typeof id === 'string' && /^(dz|it)_\d+$/.test(id);
 
 function readJSON(key) {
@@ -37,6 +36,30 @@ function fmt(sec) {
   if (!sec || isNaN(sec)) return '0:00';
   return `${Math.floor(sec / 60)}:${Math.floor(sec % 60).toString().padStart(2, '0')}`;
 }
+function safeFilename(title, artist) {
+  const base = [artist, title].filter(Boolean).join(' - ').replace(/[<>:"/\\|?*\x00-\x1f]/g, '').trim() || 'track';
+  return base.slice(0, 120) + '.m4a';
+}
+
+/** Resolve a track to an Audius/Jamendo id we can download via /api/stream. */
+async function resolveDownloadableId(track) {
+  const id = track.videoId || track.catalogId || '';
+  if (isAudioId(id)) return id;
+
+  // Catalog (dz_/it_) or anything else → ask /api/resolve (GET artist+title)
+  const qs = new URLSearchParams({
+    artist: track.artist || '',
+    title: track.title || '',
+  });
+  const dur = Number(track.duration);
+  if (dur > 0) qs.set('dur', String(Math.round(dur)));
+
+  const res = await fetch(`/api/resolve?${qs}`).then((r) => (r.ok ? r.json() : null)).catch(() => null);
+  if (res && isAudioId(res.videoId)) return res.videoId;
+  // YouTube-only tracks can't be file-downloaded from this stack
+  return null;
+}
+
 export default function NowPlaying() {
   const p = usePlayer();
   const lib = useMusicLibrary();
@@ -56,8 +79,7 @@ export default function NowPlaying() {
   const [more, setMore] = useState([]);
   const [moreLoading, setMoreLoading] = useState(false);
   const [closing, setClosing] = useState(false);
-  const job = useDownloadJob(t && t.videoId);
-  const dlState = !job ? 'idle' : job.status === 'error' ? 'error' : job.status === 'done' ? 'done' : 'loading';
+  const [dlState, setDlState] = useState('idle'); // idle | loading | error | unsupported
 
   const color = useAlbumColor(t?.thumbnail, `${t?.title || ''}${t?.artist || ''}`);
 
@@ -187,10 +209,56 @@ export default function NowPlaying() {
   // Uses the real APIs:
   //   GET /api/resolve?artist=&title=  → { videoId: 'aud_…' | 'jam_…' | ytId, source }
   //   GET /api/stream?id=aud_…|jam_…  → 302 to the real audio file
-
-  const handleDownload = () => {
+  const handleDownload = async () => {
     if (!t || dlState === 'loading') return;
-    startDownload(t);
+    setDlState('loading');
+    try {
+      const audioId = await resolveDownloadableId(t);
+      if (!audioId) {
+        // YouTube-only or unresolved — no server-side file we can grab
+        setDlState('unsupported');
+        setTimeout(() => setDlState('idle'), 2800);
+        return;
+      }
+
+      // Same-origin request; browser follows the 302 to Audius/Jamendo
+      const res = await fetch(`/api/stream?id=${encodeURIComponent(audioId)}`, {
+        redirect: 'follow',
+      });
+      if (!res.ok) throw new Error(`stream ${res.status}`);
+
+      const blob = await res.blob();
+      if (!blob || blob.size < 1024) throw new Error('empty blob');
+
+      // Prefer real extension from content-type when possible
+      let name = safeFilename(t.title, t.artist);
+      const ct = (res.headers.get('content-type') || '').toLowerCase();
+      if (ct.includes('mpeg') || ct.includes('mp3')) name = name.replace(/\.m4a$/i, '.mp3');
+      else if (ct.includes('ogg')) name = name.replace(/\.m4a$/i, '.ogg');
+      else if (ct.includes('wav')) name = name.replace(/\.m4a$/i, '.wav');
+
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+      setDlState('idle');
+    } catch (e) {
+      console.warn('Download failed', e);
+      // Last-resort: open the stream redirect in a new tab (user can save from there)
+      try {
+        const audioId = await resolveDownloadableId(t);
+        if (audioId) {
+          window.open(`/api/stream?id=${encodeURIComponent(audioId)}`, '_blank', 'noopener');
+          setDlState('idle');
+          return;
+        }
+      } catch {}
+      setDlState('error');
+      setTimeout(() => setDlState('idle'), 2500);
+    }
   };
 
   if (!p.nowPlayingOpen || !t) return null;
@@ -199,7 +267,11 @@ export default function NowPlaying() {
   const hasSynced = lyricLines.length > 0;
 
   const dlTitle =
-    dlState === 'error' ? 'Download failed — tap to retry' : isNative ? 'Save offline in app' : 'Download';
+    dlState === 'error'
+      ? 'Download failed'
+      : dlState === 'unsupported'
+        ? 'Download only works for free (Audius/Jamendo) tracks'
+        : 'Download';
 
   return (
     <div
@@ -219,8 +291,6 @@ export default function NowPlaying() {
         style={{ '--c': color }}
         data-playing={p.isPlaying ? 'true' : 'false'}
       >
-        <i />
-        <i />
         <i />
         <i />
         <i />
@@ -257,7 +327,7 @@ export default function NowPlaying() {
               aria-label="Download"
               disabled={dlState === 'loading'}
               className={`p-3 -m-1 rounded-full glass ${
-                dlState === 'error'
+                dlState === 'error' || dlState === 'unsupported'
                   ? 'text-red-400'
                   : 'text-white/70 hover:text-white'
               }`}
@@ -265,8 +335,6 @@ export default function NowPlaying() {
             >
               {dlState === 'loading' ? (
                 <Loader2 size={20} className="animate-spin" />
-              ) : dlState === 'done' ? (
-                <Check size={20} className="text-green-400" />
               ) : (
                 <Download size={20} />
               )}

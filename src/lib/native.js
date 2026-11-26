@@ -1,7 +1,6 @@
-// True when the site is running inside the Android app (Capacitor shell).
-// The shell adds "SarmaxstreamApp" to the user agent, so this works even when
-// the app loads the live website.
+// True only inside the Android WebView that exposes the SarmaxStream bridge.
+// Guard the access so the same bundle works on the normal website and during SSR.
 export const isNative =
   typeof window !== 'undefined' &&
-  (!!(window.Capacitor && typeof window.Capacitor.isNativePlatform === 'function' && window.Capacitor.isNativePlatform()) ||
-    /SarmaxstreamApp/.test((typeof navigator !== 'undefined' && navigator.userAgent) || ''));
+  typeof window.SxNative === 'object' &&
+  window.SxNative !== null;

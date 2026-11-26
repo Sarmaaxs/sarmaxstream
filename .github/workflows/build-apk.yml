@@ -96,4 +96,3 @@ jobs:
           tag_name: apk-${{ github.run_number }}
           name: Sarmaxstream APK #${{ github.run_number }}
           files: mobile/sarmaxstream.apk
-          prerelease: ${{ env.KEYSTORE_BASE64 == '' }}

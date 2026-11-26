@@ -23,7 +23,7 @@ const ALLOWED = new RegExp(
 const APPEND_OK = /^[a-z_,]{1,60}$/;
 
 export default async function handler(req, res) {
-  if (!rateLimit(req, res, { name: 'tmdb', max: 120, windowMs: 60 * 1000 })) return;
+  if (!(await rateLimit(req, res, { name: 'tmdb', max: 120, windowMs: 60 * 1000 }))) return;
 
   const token = process.env.TMDB_TOKEN;
   const apiKey = process.env.TMDB_API_KEY;
@@ -42,8 +42,7 @@ export default async function handler(req, res) {
     params.set(k, val);
   }
   params.set('include_adult', 'false');
-  const lang = String(input.language || '');
-  params.set('language', /^[a-z]{2}-[A-Z]{2}$/.test(lang) ? lang : 'en-US');
+  params.set('language', 'en-US');
   if (!token) params.set('api_key', apiKey);
 
   const url = `https://api.themoviedb.org/3/${path}?${params.toString()}`;

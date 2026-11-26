@@ -1,10 +1,10 @@
 import React from "react";
 import { Link } from "react-router-dom";
 import { Star, Play } from "lucide-react";
-import { imageUrl, isAbsolute } from "@/lib/tmdb";
+import { imageUrl } from "@/lib/tmdb";
 import { animeCardType } from "@/lib/anime";
 
-export default function MovieCard({ item, index = 0, eager = false }) {
+export default function MovieCard({ item, index = 0 }) {
   const type = animeCardType(item) || item.media_type || (item.first_air_date ? "tv" : "movie");
   const title = item.title || item.name;
   const year = (item.release_date || item.first_air_date || "").slice(0, 4);
@@ -20,17 +20,8 @@ export default function MovieCard({ item, index = 0, eager = false }) {
         {poster ? (
           <img
             src={poster}
-            srcSet={
-              item.poster_path && !isAbsolute(item.poster_path)
-                ? `${imageUrl(item.poster_path, "w185")} 185w, ${imageUrl(item.poster_path, "w342")} 342w`
-                : undefined
-            }
-            sizes="(min-width: 640px) 170px, 150px"
             alt={title}
-            width="170"
-            height="255"
-            loading={eager ? "eager" : "lazy"}
-            decoding="async"
+            loading="lazy"
             className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-110"
           />
         ) : (

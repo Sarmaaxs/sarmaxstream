@@ -28,7 +28,7 @@ function stripBoilerplate(text) {
 export default async function handler(req, res) {
   const id = String((req.query && req.query.id) || '');
   if (!/^\d{1,7}$/.test(id)) return res.status(400).json({ error: 'Bad id' });
-  if (!rateLimit(req, res, { name: 'booktext', max: 20, windowMs: 60 * 1000 })) return undefined;
+  if (!(await rateLimit(req, res, { name: 'booktext', max: 20, windowMs: 60 * 1000 }))) return undefined;
 
   const urls = [
     `https://www.gutenberg.org/cache/epub/${id}/pg${id}.txt`,

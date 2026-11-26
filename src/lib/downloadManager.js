@@ -6,10 +6,9 @@ import { saveOffline, hasOffline } from '@/lib/offlineDownloads';
 import { isNative } from '@/lib/native';
 import { canSaveToPhone, saveBlobToPhone } from '@/lib/nativeFiles';
 import { getPrefs } from '@/lib/prefs';
-import { downloadYoutubeOnDevice, deviceDownloadAvailable } from '@/lib/ytDevice';
 
 const YT_ID = /^[A-Za-z0-9_-]{11}$/;
-const isAudioId = (id) => typeof id === 'string' && /^(aud|jam|ia|ov)_/.test(id);
+const isAudioId = (id) => typeof id === 'string' && (id.startsWith('aud_') || id.startsWith('jam_'));
 
 /* ------------------------------ store ------------------------------ */
 let jobs = [];
@@ -167,8 +166,6 @@ function friendly(raw) {
   if (/empty file|empty\/invalid/i.test(m)) return 'The download server returned an empty file.';
   if (/no YouTube match|no source/i.test(m)) return 'No downloadable source found for this song.';
   if (/dropped|cut short|network/i.test(m)) return 'Connection dropped while downloading.';
-  if (/cobalt|tunnel|youtube/i.test(m))
-    return "This song can't be downloaded. Songs in the “Free to download” list can be saved.";
   return 'Download failed.';
 }
 
@@ -214,13 +211,6 @@ async function run(track, key) {
       patch(key, { status: 'downloading', source: 'server', message: 'Download server', loaded: 0, total: 0 });
       try { blob = await fetchAudioBlob({ kind: 'yt', id: ytId }, progress); via = 'server'; }
       catch (e) { errors.push(e.message); }
-    }
-
-    // 3) Android app: the phone itself
-    if (!blob && ytId && isNative && deviceDownloadAvailable()) {
-      patch(key, { status: 'downloading', source: 'phone', message: 'Your phone', loaded: 0, total: 0 });
-      try { blob = await downloadYoutubeOnDevice(ytId); via = 'phone'; }
-      catch (e) { errors.push(`phone: ${e.message || e}`); }
     }
 
     if (!blob) throw new Error(errors.join(' | ') || 'no source found for this song');

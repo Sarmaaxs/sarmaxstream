@@ -3,7 +3,8 @@ import { Outlet, useSearchParams } from 'react-router-dom';
 import Navbar from '@/components/Navbar';
 import PlayerBar from '@/components/PlayerBar';
 import { usePlayer } from '@/lib/PlayerContext';
-import DownloadProgress from '@/components/DownloadProgress';
+import DogMascot from '@/components/DogMascot';
+import AnimatedBackground from '@/components/AnimatedBackground';
 
 export default function MusicLayout() {
   const player = usePlayer();
@@ -17,19 +18,20 @@ export default function MusicLayout() {
       videoId: v,
       title: params.get('t') || '',
       artist: params.get('a') || '',
-      thumbnail: /^(aud|jam|ia|ov)_|^(dz|it)_\d+$/.test(v) ? '' : 'https://i.ytimg.com/vi/' + v + '/mqdefault.jpg',
+      thumbnail: /^(aud|jam)_|^(dz|it)_\d+$/.test(v) ? '' : 'https://i.ytimg.com/vi/' + v + '/mqdefault.jpg',
     };
     player.cueTrack(track);
   }, [params, player.isReady]);
 
   return (
     <div className="min-h-screen bg-background relative">
+      <AnimatedBackground playing={player && player.isPlaying} />
       <Navbar />
       <div className={`pt-nav pb-page mx-auto ${player.current ? 'pb-player' : ''} max-w-[1600px] px-4 sm:px-6 lg:px-10 relative z-10`}>
         <Outlet />
       </div>
       <PlayerBar />
-      <DownloadProgress />
+      <DogMascot />
     </div>
   );
 }

@@ -35,7 +35,7 @@ function shape(items) {
 }
 
 export default async function handler(req, res) {
-  if (!rateLimit(req, res, { name: 'youtube', max: 40, windowMs: 60 * 1000 })) return;
+  if (!(await rateLimit(req, res, { name: 'youtube', max: 40, windowMs: 60 * 1000 }))) return;
   const key = process.env.YOUTUBE_API_KEY;
   if (!key) return res.status(503).json({ error: 'Not configured', videos: [] });
 
